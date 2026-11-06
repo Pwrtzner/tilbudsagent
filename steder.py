@@ -10,11 +10,17 @@ import copy
 import json
 import math
 import re
+import time
 import urllib.parse
 import urllib.request
 from datetime import date, timedelta
 
-OVERPASS = "https://overpass-api.de/api/interpreter"
+OVERPASS_SERVERE = (  # offentlige, gratis spejle; den første der svarer bruges
+    "https://overpass-api.de/api/interpreter",
+    "https://overpass.private.coffee/api/interpreter",
+    "https://overpass.kumi.systems/api/interpreter",
+)
+OVERPASS = OVERPASS_SERVERE[0]
 OSRM = "https://router.project-osrm.org"
 LUFTLINJE_FAKTOR = 1.3
 KANDIDATER_PR_KAEDE = 3
@@ -147,6 +153,22 @@ def _trin(fr, nr: int, tekst: str) -> None:
         fr["trin"], fr["trin_tekst"] = nr, tekst
 
 
+def overpass_med_reserve(foresp: str, fremdrift: dict | None = None, pause: float = 3.0) -> dict:
+    """Overpass er en delt, gratis tjeneste, der ofte er overbelastet (502/504). Prøv flere spejle, og vent kort mellem forsøg."""
+    fejl = []
+    for i, url in enumerate(OVERPASS_SERVERE):
+        for forsoeg in (1, 2):
+            if fremdrift is not None and (i or forsoeg > 1):
+                _trin(fremdrift, 1, f"Søger efter dine butikker i OpenStreetMap-data (server {i + 1} af {len(OVERPASS_SERVERE)})")
+            try:
+                return _post(url, {"data": foresp})
+            except Exception as e:
+                fejl.append(f"{url.split('/')[2]}: {e}")
+                if forsoeg == 1:
+                    time.sleep(pause)
+    raise RuntimeError("Kunne ikke hente butikker fra OpenStreetMap. Tjenesten er sandsynligvis overbelastet lige nu; prøv igen om lidt. (" + "; ".join(fejl[-3:]) + ")")
+
+
 def find_afstande(con, butikker: dict, lat: float, lng: float, max_km: float = 60.0, tving: bool = False,
                   idag: date | None = None, fremdrift: dict | None = None) -> dict:
     """Sørger for at der er en afstand til (nærmeste butik i) hver kæde. Slår kun op for det, der mangler."""
@@ -157,10 +179,7 @@ def find_afstande(con, butikker: dict, lat: float, lng: float, max_km: float = 6
         fremdrift.update(i_alt=len(butikker), opslag=len(mangler))
     if mangler:
         _trin(fremdrift, 1, "Søger efter dine butikker i OpenStreetMap-data")
-        try:
-            svar = _post(OVERPASS, {"data": overpass_forespoergsel(lat, lng, max_km * 1000, mangler)})
-        except Exception as e:
-            raise RuntimeError(f"Kunne ikke hente butikker fra OpenStreetMap: {e}") from e
+        svar = overpass_med_reserve(overpass_forespoergsel(lat, lng, max_km * 1000, mangler), fremdrift)
         kand = kandidater(svar.get("elements") or [], mangler, lat, lng)
         punkter = [(k[3], k[4]) for bid in kand for k in kand[bid]]
         if fremdrift is not None:
