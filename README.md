@@ -69,3 +69,13 @@ Henter ugens tilbud fra Tjek (eTilbudsavis), gemmer dem i SQLite og anbefaler, h
 - Flyttes hjemmeadressen mere end 0,5 km, skifter appen til automatiske afstande (de indtastede hørte til det gamle sted) og finder butikkerne med det samme.
 - Butikstabellen viser én afstand pr. butik: den fundne (med adresse) eller den indtastede. «Indtast selv» låser en bestemt butik til din egen afstand.
 - Butiksopslaget kører i baggrunden og viser fremdrift i tre trin, resultat og hvilke kæder der ikke blev fundet.
+
+## Android-app (v0.7)
+
+- **Samme kode som på pc.** Android-appen (`android/`) er en tynd skal: Python-serveren (`tilbudsagent.py`, `webapp.py`, `steder.py`) kører inde i appen via Chaquopy, og brugerfladen (`app.html`) vises i en WebView. Der er ikke to kodebaser; Gradle kopierer filerne fra repoets rod ved hver bygning.
+- **Mobil-layout:** på små skærme bliver tabeller til kort, knapper og felter er større, og dialoger fylder hele bredden.
+- **GPS:** «Jeg er et andet sted» har knappen «Brug min GPS-position». Appen spørger om lokationstilladelse første gang.
+- **Data:** databasen ligger i appens private mappe på telefonen. Eksport og import (Indstillinger → Sikkerhedskopi) gemmer filen i `Download/Tilbudsagent` og læser fra filvælgeren, så historik kan flyttes mellem pc og telefon.
+- **Bygning:** `.github/workflows/byg.yml` bygger både `Tilbudsagent.exe` og `Tilbudsagent.apk`, røgtester APK'en på en Android-emulator (appen startes, og serveren kaldes) og lægger begge på samme release.
+- **Signering:** APK'en signeres med en fast nøgle fra GitHub-hemmelighederne `KEYSTORE_BASE64` og `KEYSTORE_KODE`. Samme nøgle skal bruges hver gang; ellers kan telefonen ikke opdatere appen, kun geninstallere den.
+- Kræver Android 10 eller nyere. Baggrundshentning er ikke pålidelig på Android: appen henter, når den åbnes og der er gået over et døgn.

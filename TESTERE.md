@@ -1,4 +1,4 @@
-# Tilbudsagent – til testere (Windows 11)
+# Tilbudsagent – til testere (Windows 11 og Android)
 
 Tilbudsagent samler ugens tilbud fra Tjek, holder styr på priser og viser, hvilke butikker der er værd at køre til, når kørslen er regnet med.
 
@@ -11,6 +11,14 @@ Tilbudsagent samler ugens tilbud fra Tjek, holder styr på priser og viser, hvil
 6. Under **Varer** tilføjer og retter du dine egne varer. Vælg om du vil have alle mærker eller kun et bestemt produkt, og udfyld din normalpris, så bliver rabatterne præcise.
 
 Luk programmet med knappen **Afslut** øverst til højre. Starter du det igen, mens det kører, åbner det bare den eksisterende.
+
+## Android
+1. Åbn **Releases** på GitHub i telefonens browser og hent `Tilbudsagent.apk` (seneste version).
+2. Åbn filen. Android spørger, om din browser må installere ukendte apps: tillad det (**Indstillinger → Tillad fra denne kilde**). Det er normalt for apps uden for Play Store.
+3. Åbn **Tilbudsagent**. Første start tager et par sekunder. Brugerfladen er den samme som på pc.
+4. Under **Indstillinger** skriver du din hjemmeadresse. Er du et andet sted, bruger du **Jeg er et andet sted → Brug min GPS-position**.
+5. Opdatering: hent den nyeste `.apk` og åbn den; dine data bevares. Vil du have automatisk opdatering, kan du bruge den gratis app **Obtainium** og pege den på `https://github.com/Pwrtzner/tilbudsagent`.
+6. Flyt data mellem pc og telefon med **Indstillinger → Sikkerhedskopi og flytning** (eksport gemmes i mappen `Download/Tilbudsagent`).
 
 ## Dine data
 Gemmes på din egen pc i `%APPDATA%\Tilbudsagent` (databasen `priser.db` og en logfil). Intet sendes nogen steder, bortset fra:
