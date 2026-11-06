@@ -41,7 +41,7 @@ Henter ugens tilbud fra Tjek (eTilbudsavis), gemmer dem i SQLite og anbefaler, h
 
 ## Windows-app (v0.4)
 
-- `Tilbudsagent.exe` bygges automatisk af GitHub Actions (`.github/workflows/byg-windows.yml`). Giv en version et tag, fx `git tag v0.4.0 && git push --tags`, så ligger exe'en under Releases. Workflowet kan også køres manuelt (Actions → Byg Windows-app → Run workflow); så hentes filen som artifact.
+- `Tilbudsagent.exe` bygges automatisk af GitHub Actions (`.github/workflows/byg-windows.yml`). Giv en version et tag, fx `git tag v0.4.0 && git push --tags`, så ligger exe'en under Releases. Workflowet kan også køres manuelt (Actions → Byg Windows-app → Run workflow). Skriv et versions-tag (fx v0.4.0) i feltet for at udgive en release, eller lad det stå tomt for kun at få filen som artifact.
 - Bygningen kører en røgtest: exe'en startes, API'et kaldes, og den afsluttes.
 - Pakket app gemmer data i `%APPDATA%\Tilbudsagent`. Kørt som script (`python tilbudsagent.py`) ligger data ved siden af scriptet som før. Miljøvariablen `TILBUDSAGENT_DATA` kan pege et andet sted hen.
 - Uden argumenter starter `tilbudsagent.py` selve appen.

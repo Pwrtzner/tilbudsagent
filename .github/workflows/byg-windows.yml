@@ -4,6 +4,11 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Udgiv som release med dette versions-tag (fx v0.4.0). Tom = kun byg og gem filen som artifact."
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -56,9 +61,10 @@ jobs:
           name: Tilbudsagent-windows
           path: dist/Tilbudsagent.exe*
 
-      - name: Udgiv release (kun ved versions-tag)
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Udgiv release (ved versions-tag eller udfyldt version)
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.version != ''
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${{ github.ref_name }}" dist/Tilbudsagent.exe dist/Tilbudsagent.exe.sha256 --title "Tilbudsagent ${{ github.ref_name }}" --generate-notes
+          VERSION: ${{ inputs.version || github.ref_name }}
+        run: gh release create "$env:VERSION" dist/Tilbudsagent.exe dist/Tilbudsagent.exe.sha256 --target "${{ github.sha }}" --title "Tilbudsagent $env:VERSION" --generate-notes
