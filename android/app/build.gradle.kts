@@ -16,7 +16,6 @@ val genAssets = layout.buildDirectory.dir("generated/res-assets")
 
 val syncKilder by tasks.registering(Copy::class) {
     from(rootProject.file("../")) { include("tilbudsagent.py", "webapp.py", "steder.py") }
-    from(file("src/main/python")) { include("android_main.py") }
     into(genPython)
 }
 val syncRes by tasks.registering(Copy::class) {
