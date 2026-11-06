@@ -40,7 +40,7 @@ try:
 except ModuleNotFoundError:  # Python 3.10: pip install tomli
     import tomli as tomllib
 
-VERSION = "0.5.0"
+VERSION = "0.6.0"
 FROSSET = getattr(sys, "frozen", False)  # True når appen er pakket som .exe
 # RES: hvor startværdier og app.html ligger. DATA: hvor brugerens database og log gemmes.
 RES = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
@@ -127,6 +127,9 @@ def connect(db: Path) -> sqlite3.Connection:
     con.execute("""CREATE TABLE IF NOT EXISTS raa(
         tjek_id TEXT PRIMARY KEY, forhandler TEXT, overskrift TEXT, beskrivelse TEXT, pris REAL, foer_pris REAL,
         gyldig_fra TEXT, gyldig_til TEXT, foerst_set TEXT, sidst_set TEXT, soeg TEXT, json TEXT NOT NULL)""")
+    con.execute("""CREATE TABLE IF NOT EXISTS afstand(
+        pos TEXT, butik TEXT, km REAL, navn TEXT, adresse TEXT, lat REAL, lng REAL, metode TEXT, hentet TEXT,
+        PRIMARY KEY(pos, butik))""")
     con.execute("CREATE TABLE IF NOT EXISTS kv(key TEXT PRIMARY KEY, value TEXT)")
     con.execute("CREATE TABLE IF NOT EXISTS vare(id TEXT PRIMARY KEY, pos INTEGER, json TEXT NOT NULL)")
     con.commit()
@@ -147,6 +150,8 @@ def get_cfg(con, seed: Path) -> dict:
         cfg = json.loads(r["value"])
         cfg["regler"].setdefault("max_rabat", 0.6)
         cfg.setdefault("app", {}).setdefault("auto_hent", True)
+        cfg["koersel"].setdefault("zone_graenser", [10, 20])
+        cfg["koersel"].setdefault("auto_afstand", False)
         return cfg
     if not seed.exists():
         sys.exit(f"Mangler {seed} (bruges som startværdier første gang).")
@@ -154,6 +159,8 @@ def get_cfg(con, seed: Path) -> dict:
     cfg.setdefault("adresse", "")
     cfg["regler"].setdefault("max_rabat", 0.6)
     cfg.setdefault("app", {}).setdefault("auto_hent", True)
+    cfg["koersel"].setdefault("zone_graenser", [10, 20])
+    cfg["koersel"].setdefault("auto_afstand", False)
     save_cfg(con, cfg)
     return cfg
 
@@ -282,6 +289,24 @@ def tjek_hent(cfg: dict, query: str):
         return json.load(r)
 
 
+RAA_FELTER = ("id", "heading", "description", "pricing", "quantity", "run_from", "run_till")
+
+
+def slank(o: dict) -> dict:
+    """Behold kun det, vi bruger (billeder, kataloger og branding fylder mest og gemmes ikke)."""
+    d = {k: o[k] for k in RAA_FELTER if k in o}
+    d["dealer"] = {"name": (o.get("dealer") or {}).get("name", "")}
+    return d
+
+
+def rens_gamle(con, dage: int) -> int:
+    """Slet rå tilbud der sidst er set for mere end `dage` dage siden. Afledte priser (obs) beholdes."""
+    graense = (date.today() - timedelta(days=dage)).isoformat()
+    n = con.execute("DELETE FROM raa WHERE sidst_set < ?", (graense,)).rowcount
+    con.commit()
+    return n
+
+
 def raa_gem(con, o: dict, soeg: str, dato: str) -> bool:
     """Gem tilbuddet uændret (første gang vi ser det) eller opdater 'sidst set'. True = nyt tilbud."""
     tid = o.get("id")
@@ -298,7 +323,7 @@ def raa_gem(con, o: dict, soeg: str, dato: str) -> bool:
                        THEN raa.soeg ELSE raa.soeg || ',' || excluded.soeg END""",
         (tid, (o.get("dealer") or {}).get("name", ""), (o.get("heading") or "").strip(), o.get("description"),
          pr.get("price"), pr.get("pre_price"), (o.get("run_from") or "")[:10] or None,
-         (o.get("run_till") or "")[:10] or None, dato, dato, soeg, json.dumps(o, ensure_ascii=False)))
+         (o.get("run_till") or "")[:10] or None, dato, dato, soeg, json.dumps(slank(o), ensure_ascii=False, separators=(",", ":"))))
     return not fandtes
 
 
@@ -355,12 +380,12 @@ def hent(cfg, varer, con, idag: date, fremdrift: dict | None = None) -> dict:
                 fejl += 1
                 continue
             for o in tilbud:
-                if raa_gem(con, o, alt, idag.isoformat()):
-                    raa_nye += 1
                 dn = (o.get("dealer") or {}).get("name", "")
-                if not butik_fra_dealer(cfg, dn):
+                if not butik_fra_dealer(cfg, dn):  # kæder du ikke har oprettet gemmes ikke (holder databasen lille)
                     ukendte[dn] += 1
                     continue
+                if raa_gem(con, o, alt, idag.isoformat()):
+                    raa_nye += 1
                 k = obs_fra_tilbud(cfg, v, o, idag.isoformat())
                 if k:
                     nye += indsaet(con, **k)

@@ -91,6 +91,9 @@ main{max-width:1240px;margin:0 auto;padding:22px 20px 60px}
 .spin{width:18px;height:18px;border-radius:50%;border:3px solid rgba(127,127,127,.35);border-top-color:var(--focus);animation:sp .9s linear infinite;flex:none}
 @keyframes sp{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion: reduce){.spin{animation-duration:3s}}
+.posbar{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;padding:6px 16px;font-size:.88rem;border-top:1px solid var(--line);background:var(--card)}
+.posbar.anden{background:var(--warn-bg,#fff4d6)}
+.geo-res button.on{outline:2px solid var(--btn)}
 a.btn,label.btn{display:inline-block;text-decoration:none}
 .foot{max-width:1200px;margin:24px auto;padding:0 16px;word-break:break-all}
 .btn.busy{display:inline-flex;align-items:center;gap:8px}
@@ -192,17 +195,20 @@ dialog form{padding:20px;display:grid;gap:14px}
   <div class="status"><span id="sidste"></span><button class="btn" id="hent">Hent tilbud</button><button class="btn ghost small" data-do="afslut" title="Lukker Tilbudsagent helt">Afslut</button></div>
 </header>
 <div id="banner" hidden role="status" aria-live="polite"></div>
+<div id="posbar" class="posbar"></div>
 </div>
 <main id="view"></main>
 <footer class="foot small muted" id="foot"></footer>
 
 <dialog id="dlg-vare"><form method="dialog" id="f-vare"></form></dialog>
+<dialog id="dlg-pos"><form method="dialog" id="f-pos"></form></dialog>
 <dialog id="dlg-manuel"><form method="dialog" id="f-manuel"></form></dialog>
 <div id="toast" role="status"></div>
 
 <script>
 "use strict";
 const $ = (s, r=document) => r.querySelector(s);
+const $$ = (s, r=document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const nf2 = new Intl.NumberFormat("da-DK",{minimumFractionDigits:2,maximumFractionDigits:2});
 const nf1 = new Intl.NumberFormat("da-DK",{maximumFractionDigits:1});
@@ -228,25 +234,55 @@ function toast(msg, err=false){
   const t = $("#toast"); t.textContent = msg; t.className = "show" + (err ? " err" : "");
   clearTimeout(toastT); toastT = setTimeout(()=> t.className = "", err ? 7000 : 3500);
 }
-async function load(){ S = await api("/api/state"); renderTop(); render(); $("#foot").textContent = `Tilbudsagent ${S.version} · data: ${S.data_mappe}` + (S.dash.raa_antal ? ` · historik: ${S.dash.raa_antal} tilbud gemt siden ${dKort(S.dash.raa_foerst)}` : ""); }
+async function load(){ S = await api("/api/state"); renderTop(); render(); $("#foot").textContent = `Tilbudsagent ${S.version} · data: ${S.data_mappe}` + (S.dash.raa_antal ? ` · historik: ${S.dash.raa_antal} tilbud gemt siden ${dKort(S.dash.raa_foerst)}` : "") + ` · database: ${S.db_mb} MB`; }
 async function act(fn, ok){ try{ await fn(); if(ok) toast(ok); await load(); }catch(e){ toast(e.message, true); } }
 
 /* zonefarver: de tre nærmeste zoner får serie-farverne, resten grå */
 function zoneOrder(){
   const m = {};
-  for(const b of Object.values(S.cfg.butikker)) m[b.zone] = Math.min(m[b.zone] ?? 1e9, b.afstand_km);
+  for(const b of Object.values(S.eff_butikker || S.cfg.butikker).filter(b => !b.fjernet)) m[b.zone] = Math.min(m[b.zone] ?? 1e9, b.afstand_km);
   return Object.keys(m).sort((a,b)=> m[a]-m[b]);
 }
 const zc = z => { const i = zoneOrder().indexOf(z); return i>=0 && i<3 ? `var(--z${i+1})` : "var(--z0)"; };
 const zdot = z => `<span class="zdot" style="background:${zc(z)}"></span>`;
 
 /* ---------- top ---------- */
+function fundetTekst(id){
+  const e = (S.eff_butikker || {})[id]; if(!e || !e.fundet) return e && e.fjernet ? '<span class="muted">ikke fundet ved dette sted</span>' : '<span class="muted">–</span>';
+  return `${esc(e.fundet.adresse || e.fundet.navn)}<br><span class="muted">${String(e.afstand_km).replace(".", ",")} km${e.fundet.metode === "luftlinje" ? " (ca., luftlinje)" : ""}</span>`;
+}
+function renderPos(){
+  const p = S.position, el = $("#posbar"); if(!p){ el.hidden = true; return; }
+  el.hidden = false; el.className = "posbar" + (p.hjem ? "" : " anden");
+  el.innerHTML = p.hjem
+    ? `<span>Beregner fra: <b>hjem</b>${S.cfg.adresse ? " (" + esc(S.cfg.adresse.split(",").slice(0,2).join(",")) + ")" : ""}</span><button class="btn ghost small" data-do="pos-dlg">Jeg er et andet sted</button>`
+    : `<span>Beregner fra: <b>${esc(p.navn.split(",").slice(0,2).join(","))}</b> · afstande og zoner er fundet automatisk ud fra dette sted</span><button class="btn ghost small" data-do="pos-dlg">Skift sted</button><button class="btn small" data-do="pos-hjem">Tilbage til hjem</button>`;
+}
+let valgtPos = null;
+function posDialog(){
+  valgtPos = null; const f = $("#f-pos");
+  const sen = (S.seneste_positioner || []).map((x,i)=>`<button type="button" class="btn ghost small" data-pos-sen="${i}">${esc(x.navn.split(",").slice(0,2).join(","))}</button>`).join(" ");
+  f.innerHTML = `<h2>Jeg er et andet sted</h2>
+    <p class="small muted">Skriv adressen, hvor du er (arbejde, venner, ferie). Appen finder den nærmeste butik i hver af dine kæder og kørselsafstanden dertil. Det tager op til et minut første gang; derefter er stedet gemt.</p>
+    <div class="form"><label class="f">Adresse<span class="inl"><input type="text" id="p-adr" placeholder="Vejnavn nr., postnummer by"><button class="btn ghost" id="p-find" type="button">Find</button></span></label>
+    <div id="p-res" class="geo-res"></div>
+    ${sen ? `<div><b class="small">Seneste steder</b><div class="inl" style="margin-top:4px;flex-wrap:wrap">${sen}</div></div>` : ""}
+    <label class="small inl"><input type="checkbox" id="p-sunk" checked> Jeg handler alligevel i nærheden af dette sted (kørsel til de nære butikker tæller 0 kr)</label></div>
+    <div class="savebar"><button class="btn" id="p-ok" type="button" disabled>Brug dette sted</button><button class="btn ghost" id="p-annuller" type="button">Annuller</button></div>`;
+  $("#dlg-pos").showModal(); $("#p-adr").focus();
+}
+async function brugPos(x){
+  const ok = $("#p-ok"); ok.disabled = true; ok.innerHTML = '<span class="spin" aria-hidden="true"></span>Finder butikker …';
+  try{ await api("/api/position", {navn:x.navn, lat:x.lat, lng:x.lng, sunk:$("#p-sunk").checked}); $("#dlg-pos").close(); toast("Beregner nu fra det nye sted."); await load(); }
+  catch(e){ ok.disabled = false; ok.textContent = "Brug dette sted"; toast(e.message, true); }
+}
 function renderTop(){
   $("#nav").innerHTML = TABS.map(([k,t]) => `<button data-tab="${k}" ${k===tab?'aria-current="page"':''}>${t}</button>`).join("");
   const d = S.dash, h = S.hent || {};
   $("#sidste").textContent = h.koerer ? "" : d.sidste_hentning ? "Sidst hentet " + dKort(d.sidste_hentning) : "Ikke hentet endnu";
   const b = $("#hent"); b.disabled = !!h.koerer; b.className = "btn" + (h.koerer ? " busy" : "");
   b.innerHTML = h.koerer ? '<span class="spin" aria-hidden="true"></span>Henter …' : "Hent tilbud";
+  renderPos();
   renderBanner();
 }
 let doneMsg = null, doneT;
@@ -526,6 +562,8 @@ function indstillingerView(){
   const butRows = Object.entries(c.butikker).map(([id,b]) => `<tr><td><input type="text" data-p="butikker.${esc(id)}.navn" value="${esc(b.navn)}"></td>
     <td><span class="inl"><input type="number" step="any" style="min-width:70px" data-p="butikker.${esc(id)}.afstand_km" value="${b.afstand_km}"><span class="suf">km</span></span></td>
     <td><input type="text" data-p="butikker.${esc(id)}.zone" data-zone value="${esc(b.zone)}" style="min-width:90px"></td>
+    <td><input type="checkbox" data-p="butikker.${esc(id)}.fast_afstand" ${b.fast_afstand?"checked":""} aria-label="Fast afstand"></td>
+    <td class="small">${fundetTekst(id)}</td>
     <td><input type="text" data-p="butikker.${esc(id)}.tjek_navn" value="${esc(Array.isArray(b.tjek_navn)?b.tjek_navn.join(", "):b.tjek_navn)}">${b.kilde==="manuel"?'<span class="small muted">indtastes manuelt</span>':""}</td>
     <td><button class="btn danger small" data-bdel="${esc(id)}">Fjern</button></td></tr>`).join("");
   return `<div class="stack" style="max-width:900px">
@@ -539,11 +577,16 @@ function indstillingerView(){
     <label class="f">Kørsel pr. km${inp("koersel.kr_pr_km",{suf:"kr"})}</label>
     <label class="f">Pris pr. butik${inp("koersel.stop_kr",{suf:"kr"})}<span class="hint">Tid og besvær ved hvert stop.</span></label>
     <label class="f">Margin pr. tur${inp("koersel.margin_pr_tur_kr",{suf:"kr"})}<span class="hint">Ekstra besparelse en tur skal give.</span></label></div>
+    <div class="form"><label class="small inl"><input type="checkbox" data-p="koersel.auto_afstand" ${k.auto_afstand?"checked":""}> Find afstande til nærmeste butik i hver kæde automatisk ud fra min adresse</label>
+    <p class="small muted">Fra et andet sted (knappen øverst) bruges altid automatiske afstande. Butikker markeret «fast» beholder den afstand, du selv har skrevet, når du er hjemme.</p>
+    <div class="row3"><label class="f">«Lokal» op til${inp("koersel.zone_graenser.0",{suf:"km"})}<span class="hint">Automatiske zoner.</span></label>
+    <label class="f">«Mellem» op til${inp("koersel.zone_graenser.1",{suf:"km"})}<span class="hint">Længere væk er «fjern».</span></label>
+    <div class="f"><span class="small">&nbsp;</span><button class="btn ghost small" data-do="afstande-find" type="button">Find afstande nu</button></div></div></div>
     <div><b class="small">Zoner du alligevel kører til hver uge</b><p class="small muted" style="margin-bottom:6px">Kørsel dertil tæller 0 kr.</p>
     <div class="checks" id="sunk">${zoner.map(z=>`<label>${zdot(z)}<input type="checkbox" data-sunk="${esc(z)}" ${k.sunk_zoner.includes(z)?"checked":""}> ${esc(z)}</label>`).join("")}</div></div></div></section>
 
   <section class="card"><div class="card-head"><h2>Butikker</h2><p class="muted small">Afstand er én vej. Butikker i samme zone antages at ligge i samme by, og en tur dertil koster kørsel til den fjerneste. Tjek-navn er det, forhandleren hedder hos Tjek (adskil flere med komma).</p></div>
-    <div class="tablewrap"><table><thead><tr><th>Navn</th><th>Afstand</th><th>Zone</th><th>Tjek-navn</th><th></th></tr></thead><tbody>${butRows}</tbody></table></div>
+    <div class="tablewrap"><table><thead><tr><th>Navn</th><th>Afstand</th><th>Zone</th><th>Fast</th><th>Fundet automatisk</th><th>Tjek-navn</th><th></th></tr></thead><tbody>${butRows}</tbody></table></div>
     <p style="margin-top:10px"><button class="btn ghost small" id="badd">Tilføj butik</button></p></section>
 
   <section class="card"><div class="card-head"><h2>Hvornår er et tilbud godt?</h2></div><div class="form"><div class="row3">
@@ -574,13 +617,17 @@ function render(){
   if(tab === "overblik"){ const s = $("#hv"); if(s){ s.onchange = () => { chartVare = s.value; loadHist(); }; $("#tbl").onclick = () => { tblView = !tblView; $("#tbl").textContent = tblView ? "Vis som graf" : "Vis som tabel"; drawChart(); }; loadHist(); } }
 }
 document.addEventListener("click", e => {
-  const t = e.target.closest("[data-do],[data-tab-go],[data-vare],[data-bdel],#badd,#gem,#fortryd,#geo,[data-geo]"); if(!t) return;
+  const t = e.target.closest("[data-do],[data-tab-go],[data-vare],[data-bdel],#badd,#gem,#fortryd,#geo,[data-geo],#p-find,#p-ok,#p-annuller,[data-pgeo],[data-pos-sen]"); if(!t) return;
   if(t.dataset.tabGo){ tab = t.dataset.tabGo; renderTop(); render(); return; }
   if(t.dataset.vare){ vareDialog(t.dataset.vare); return; }
   switch(t.dataset.do){
     case "hent": $("#hent").click(); return;
     case "vare-ny": vareDialog(null); return;
     case "manuel": manuelDialog(); return;
+    case "pos-dlg": posDialog(); return;
+    case "pos-hjem": act(() => api("/api/position/hjem", {}), "Beregner nu fra hjem."); return;
+    case "afstande-find": { const b = t; b.disabled = true; b.textContent = "Finder butikker …";
+      act(() => api("/api/afstande", {tving: true}), "Afstande opdateret.").finally(()=>{ b.disabled = false; }); return; }
     case "afslut":
       if(!confirm("Lukke Tilbudsagent helt? Du kan starte den igen fra programmet.")) return;
       api("/api/afslut", {}).catch(()=>{}).finally(() => { document.body.innerHTML = '<main style="padding:48px 16px;max-width:560px;margin:auto"><h1>Tilbudsagent er lukket</h1><p>Du kan lukke denne fane. Start programmet igen, når du skal bruge det.</p></main>'; });
@@ -588,6 +635,13 @@ document.addEventListener("click", e => {
     case "demo-on": act(() => api("/api/demo", {paa:true}), "Demodata indlæst."); return;
     case "demo-off": act(() => api("/api/demo", {paa:false}), "Demodata fjernet."); return;
   }
+  if(t.id === "p-annuller"){ $("#dlg-pos").close(); return; }
+  if(t.id === "p-find"){ const q = $("#p-adr").value, box = $("#p-res"); box.innerHTML = '<span class="small muted">Søger …</span>';
+    api("/api/geokod", {q}).then(r => { box.innerHTML = r.resultater.length ? r.resultater.map((x,i)=>`<button type="button" data-pgeo="${i}">${esc(x.navn)}</button>`).join("") : '<span class="small">Ingen adresser fundet. Prøv med vejnavn, nummer og by.</span>'; box._r = r.resultater; })
+      .catch(err => { box.innerHTML = `<span class="small" style="color:var(--danger)">${esc(err.message)}</span>`; }); return; }
+  if(t.dataset.pgeo != null){ valgtPos = $("#p-res")._r[+t.dataset.pgeo]; $$("#p-res button").forEach(b => b.classList.toggle("on", b === t)); $("#p-ok").disabled = false; return; }
+  if(t.dataset.posSen != null){ valgtPos = S.seneste_positioner[+t.dataset.posSen]; brugPos(valgtPos); return; }
+  if(t.id === "p-ok"){ if(valgtPos) brugPos(valgtPos); return; }
   if(t.dataset.bdel){ delete draft.butikker[t.dataset.bdel]; render(); return; }
   if(t.id === "badd"){ draft.butikker["ny:" + Math.random().toString(36).slice(2,7)] = {navn:"Ny butik", afstand_km:10, zone:"lokal", tjek_navn:[]}; render(); return; }
   if(t.id === "fortryd"){ draft = null; render(); return; }
@@ -603,7 +657,10 @@ document.addEventListener("change", e => {
   if(!confirm("Importere opsætningen fra «" + f.name + "»? Dine nuværende varer, butikker og indstillinger erstattes. Din eksisterende prishistorik beholdes, og historik fra filen flettes ind.")) return;
   act(async () => { let j; try { j = JSON.parse(await f.text()); } catch(_){ throw new Error("Filen er ikke en gyldig opsætningsfil."); } await api("/api/import", j); draft = null; }, "Importeret.");
 });
-document.addEventListener("keydown", e => { if(e.key === "Enter" && e.target.matches("tr.click")) vareDialog(e.target.dataset.vare); });
+document.addEventListener("keydown", e => {
+  if(e.key === "Enter" && e.target.matches("tr.click")) vareDialog(e.target.dataset.vare);
+  if(e.key === "Enter" && e.target.id === "p-adr"){ e.preventDefault(); $("#p-find").click(); }
+});
 document.addEventListener("input", e => {
   const el = e.target;
   if(el.dataset.f){ filt[el.dataset.f] = el.type === "checkbox" ? el.checked : el.value; if(el.type === "text") { const pos = el.selectionStart; render(); const n = $('[data-f="q"]'); n.focus(); n.setSelectionRange(pos,pos); } else render(); return; }

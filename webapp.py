@@ -19,6 +19,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from types import SimpleNamespace
 
+import steder as geo
 import tilbudsagent as ta
 
 HERE = ta.RES  # app.html, config.toml og varer.csv ligger her (i .exe: i den udpakkede pakke)
@@ -166,6 +167,12 @@ def indstillinger_fra_form(b: dict, cfg: dict) -> dict:
     k["stop_kr"] = talfelt(kb.get("stop_kr"), 0, 1000, "Pris pr. butik")
     k["margin_pr_tur_kr"] = talfelt(kb.get("margin_pr_tur_kr", 0), 0, 10000, "Margin pr. tur")
     k["sunk_zoner"] = [str(z) for z in kb.get("sunk_zoner", [])]
+    k["auto_afstand"] = bool(kb.get("auto_afstand"))
+    g = kb.get("zone_graenser") or [10, 20]
+    g1, g2 = talfelt(g[0], 1, 500, "Grænse for lokal zone"), talfelt(g[1], 1, 500, "Grænse for mellem-zone")
+    if g1 >= g2:
+        raise ValueError("Grænsen for «lokal» skal være mindre end grænsen for «mellem».")
+    k["zone_graenser"] = [g1, g2]
     ny.setdefault("app", {})["auto_hent"] = bool((b.get("app") or {}).get("auto_hent", True))
     r, rb = ny["regler"], b.get("regler", {})
     r["min_rabat"] = talfelt(rb.get("min_rabat"), 0, 0.95, "Mindste rabat")
@@ -185,6 +192,8 @@ def indstillinger_fra_form(b: dict, cfg: dict) -> dict:
         ny_b = dict(navn=navn, afstand_km=talfelt(bb.get("afstand_km"), 0, 2000, f"Afstand til {navn}"),
                     zone=str(bb.get("zone", "")).strip().lower() or "lokal",
                     tjek_navn=liste(bb.get("tjek_navn")) or [navn.lower()])
+        if bb.get("fast_afstand"):
+            ny_b["fast_afstand"] = True
         if bb.get("kilde") == "manuel":
             ny_b["kilde"] = "manuel"
         butikker[bid] = ny_b
@@ -218,7 +227,17 @@ def start_hent() -> dict:
         con = ta.connect(APP["db"])
         try:
             cfg, varer = ta.get_cfg(con, APP["config"]), ta.get_varer(con, APP["varer"])
-            st["resultat"] = ta.hent(cfg, varer, con, date.today(), fremdrift=st)
+            res = ta.hent(cfg, varer, con, date.today(), fremdrift=st)
+            pos = geo.aktiv_position(con, cfg)
+            t = cfg["tjek"]
+            if (not pos["hjem"] and (t.get("lat") or t.get("lng")) and (pos["lat"] or pos["lng"])
+                    and geo.luftlinje_km(t["lat"], t["lng"], pos["lat"], pos["lng"]) > t.get("radius_m", 30000) / 2000):
+                c2 = json.loads(json.dumps(cfg))  # position er langt fra hjem: hent også tilbud omkring den
+                c2["tjek"]["lat"], c2["tjek"]["lng"] = pos["lat"], pos["lng"]
+                r2 = ta.hent(c2, varer, con, date.today(), fremdrift=st)
+                for kk in ("nye", "raa_nye", "fejl", "kald"):
+                    res[kk] = res.get(kk, 0) + r2.get(kk, 0)
+            st["resultat"] = res
             if st["resultat"]["fejl"] < max(1, st["resultat"].get("kald", 1)):  # mindst ét kald lykkedes
                 con.execute("INSERT OR REPLACE INTO kv(key,value) VALUES('sidste_hent_ts',?)", (datetime.now().isoformat(timespec="seconds"),))
                 con.commit()
@@ -393,8 +412,17 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 cfg, varer = ta.get_cfg(con, APP["config"]), ta.get_varer(con, APP["varer"])
                 if u.path == "/api/state":
-                    return self._json(dict(cfg=cfg, varer=varer, dash=dashboard(cfg, varer, con, date.today()),
-                                           hent=APP["hent"], version=ta.VERSION, data_mappe=str(ta.DATA)))
+                    ceff = geo.effektiv(con, cfg)  # afstande/zoner for den aktive position (hjem eller "lige nu")
+                    sen = con.execute("SELECT value FROM kv WHERE key='positioner_seneste'").fetchone()
+                    eff = {bid: dict(navn=b["navn"], afstand_km=b["afstand_km"], zone=b["zone"], fundet=b.get("_fundet"),
+                                     fjernet=bid not in ceff["butikker"]) for bid, b in cfg["butikker"].items()}
+                    for bid, b in ceff["butikker"].items():
+                        eff[bid].update(afstand_km=b["afstand_km"], zone=b["zone"], fundet=b.get("_fundet"))
+                    return self._json(dict(cfg=cfg, varer=varer, dash=dashboard(ceff, varer, con, date.today()),
+                                           position=ceff["_position"], seneste_positioner=json.loads(sen["value"]) if sen else [],
+                                           eff_butikker=eff, zoner_eff=sorted({b["zone"] for b in ceff["butikker"].values()}),
+                                           hent=APP["hent"], version=ta.VERSION, data_mappe=str(ta.DATA),
+                                           db_mb=round(APP["db"].stat().st_size / 1e6, 1)))
                 if u.path == "/api/eksport":
                     dato = date.today().isoformat()
                     return self._send(200, json.dumps(eksport(con, cfg, varer, u.query == "historik=1"), ensure_ascii=False, indent=None if u.query else 1).encode("utf-8"),
@@ -450,6 +478,31 @@ class Handler(BaseHTTPRequestHandler):
                     ny = indstillinger_fra_form(b, cfg)
                     ta.save_cfg(con, ny)
                     ta.genopbyg(con, ny, varer)  # butiksnavne kan være rettet
+                    if ny["koersel"].get("auto_afstand") and (ny["tjek"].get("lat") or ny["tjek"].get("lng")):
+                        try:  # slår kun op for det, der mangler (nye butikker, ændret adresse)
+                            geo.find_afstande(con, ny["butikker"], ny["tjek"]["lat"], ny["tjek"]["lng"])
+                        except RuntimeError as e:
+                            raise ValueError(f"Indstillingerne er gemt, men afstande kunne ikke findes automatisk: {e}")
+                elif u == "/api/position":
+                    lat, lng = talfelt(b.get("lat"), -90, 90, "Breddegrad"), talfelt(b.get("lng"), -180, 180, "Længdegrad")
+                    navn = str(b.get("navn") or "").strip()[:200] or "Anden position"
+                    try:
+                        rows = geo.find_afstande(con, cfg["butikker"], lat, lng)
+                    except RuntimeError as e:
+                        raise ValueError(str(e))
+                    if not any(r["km"] is not None for r in rows.values()):
+                        raise ValueError("Der blev ikke fundet nogen af dine butikker inden for 60 km af det sted.")
+                    geo.gem_position(con, navn, lat, lng, bool(b.get("sunk", True)))
+                elif u == "/api/position/hjem":
+                    geo.ryd_position(con)
+                elif u == "/api/afstande":
+                    pos = geo.aktiv_position(con, cfg)
+                    if not (pos["lat"] or pos["lng"]):
+                        raise ValueError("Sæt din adresse under Indstillinger først.")
+                    try:
+                        geo.find_afstande(con, cfg["butikker"], pos["lat"], pos["lng"], tving=bool(b.get("tving")))
+                    except RuntimeError as e:
+                        raise ValueError(str(e))
                 elif u == "/api/manuel":
                     ta.manuel(cfg, varer, con, SimpleNamespace(
                         butik=b.get("butik"), vare=b.get("vare"),
@@ -518,6 +571,8 @@ def koer(a) -> None:
         ta.ryd_obs(con, v)  # fjerner gamle fejlmatch (matcher kun på overskrift nu)
     migrer(con, cfg)
     ta.genopbyg(con, ta.get_cfg(con, a.config), ta.get_varer(con, a.varer))  # fra gemte rå tilbud
+    if ta.rens_gamle(con, ta.get_cfg(con, a.config)["regler"].get("raa_dage", 730)) > 500:
+        con.execute("VACUUM")  # giv pladsen tilbage efter en stor oprydning
     con.close()
     url = f"http://localhost:{a.port}/"
     try:

@@ -53,3 +53,12 @@ Henter ugens tilbud fra Tjek (eTilbudsavis), gemmer dem i SQLite og anbefaler, h
 - Tilbud fra før v0.5 ligger fortsat i `obs`; `raa` fyldes fra og med første hentning i v0.5.
 - Appen henter selv tilbud, når der er gået over 20 timer siden sidste vellykkede hentning, mens den er åben og adressen er sat (kan slås fra under Indstillinger).
 - Eksportér komplet (`/api/eksport?historik=1`) tager alle gemte tilbud og manuelle priser med. Import flettes uden dubletter.
+
+## Steder og afstande (v0.6)
+
+- **Fast hjem:** hjemmeadressen er udgangspunktet. Afstandene du har skrevet i Indstillinger → Butikker bruges som før. Slå «Find afstande automatisk» til for i stedet at få nærmeste butik i hver kæde (kæder markeret «Fast» beholder din egen afstand).
+- **Jeg er et andet sted:** knappen øverst. Skriv en adresse, så finder appen nærmeste butik i hver kæde og vejafstanden dertil, og regner ugens tur fra dér. Zoner afgøres af afstand (grænserne kan ændres), og kørsel til «lokal» zone kan regnes som gratis, hvis du alligevel handler dér. Kæder der ikke findes inden for 60 km udelades.
+- **Gemt én gang:** fundne butikker og afstande gemmes pr. sted (tabellen `afstand`) og slås kun op igen efter 180 dage (30 dage for kæder, der ikke blev fundet).
+- **Kilder:** butikker fra OpenStreetMap (Overpass), kørselsafstand fra OSRM's gratis demoserver; kan vejafstand ikke hentes, bruges luftlinje × 1,3 (markeret «ca.»). Begge er delte, gratis tjenester: appen spørger kun, når noget mangler.
+- Ligger det andet sted langt fra hjem, henter «Hent tilbud» også tilbud omkring det sted.
+- Databasen: rå tilbud gemmes slanke (kun brugte felter), og tilbud der sidst er set for over 730 dage siden slettes (`regler.raa_dage`). Dine afledte priser bevares. Databasestørrelsen vises nederst i appen.
