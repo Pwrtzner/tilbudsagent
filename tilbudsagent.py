@@ -40,10 +40,10 @@ try:
 except ModuleNotFoundError:  # Python 3.10: pip install tomli
     import tomli as tomllib
 
-VERSION = "0.6.1"
+VERSION = "0.7.0"
 FROSSET = getattr(sys, "frozen", False)  # True når appen er pakket som .exe
 # RES: hvor startværdier og app.html ligger. DATA: hvor brugerens database og log gemmes.
-RES = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+RES = Path(os.environ.get("TILBUDSAGENT_RES") or getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
 HERE = RES  # bagudkompatibelt navn
 
 
@@ -638,7 +638,7 @@ def demo(cfg, varer, con, idag: date) -> None:
 
 
 # ------------------------------------------------------------------- cli ---
-def main() -> None:
+def main(argv=None) -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("kommando", nargs="?", default="app", choices=["app", "hent", "rapport", "uge", "manuel", "demo"])
     ap.add_argument("butik", nargs="?")
@@ -655,7 +655,7 @@ def main() -> None:
     ap.add_argument("--ingen-browser", action="store_true")
     ap.add_argument("--version", action="version", version=f"Tilbudsagent {VERSION}")
     sikr_output()
-    a = ap.parse_args()
+    a = ap.parse_args(argv)
 
     if a.kommando == "app":
         import webapp
