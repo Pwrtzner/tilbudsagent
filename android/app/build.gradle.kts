@@ -24,6 +24,13 @@ val syncRes by tasks.registering(Copy::class) {
     into(genAssets.map { it.dir("res") })
 }
 tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(syncKilder, syncRes) }
+// alle trin der læser de kopierede filer skal vente på kopieringen
+tasks.configureEach {
+    if (name != "syncKilder" && name != "syncRes" && name != "clean") {
+        if (name.contains("PythonSources")) dependsOn(syncKilder)
+        if (name.endsWith("Assets") || name.contains("Lint")) dependsOn(syncRes)
+    }
+}
 
 android {
     namespace = "dk.pwrtzner.tilbudsagent"
