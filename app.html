@@ -1,0 +1,602 @@
+<!doctype html>
+<html lang="da">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tilbudsagent</title>
+<style>
+:root{
+  color-scheme: light;
+  --bg:#f2f4f7; --panel:#ffffff; --ink:#121821; --ink-2:#465162; --ink-3:#657083; --line:#dfe3e9; --line-2:#eceff3;
+  --btn:#121821; --btn-ink:#ffffff; --focus:#2a78d6; --danger:#b42318; --note:#fff7e0; --note-line:#ecd9a0;
+  --z1:#2a78d6; --z2:#eb6834; --z3:#1baf7a; --z0:#8a94a3;
+  --paper:#fbfbf7; --paper-ink:#1c1f24; --paper-2:#5b616b; --paper-line:#b9bcc2;
+  --font:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,sans-serif;
+  --mono:"Cascadia Mono","Cascadia Code",Consolas,ui-monospace,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    color-scheme: dark;
+    --bg:#0e1218; --panel:#161b23; --ink:#eef1f5; --ink-2:#b5beca; --ink-3:#8c98a8; --line:#2a313c; --line-2:#212833;
+    --btn:#eef1f5; --btn-ink:#121821; --focus:#6da7ec; --danger:#f08b82; --note:#2a2412; --note-line:#5a4c1d;
+    --z1:#3987e5; --z2:#d95926; --z3:#199e70; --z0:#7b8696;
+  }
+}
+*{box-sizing:border-box}
+html{font-size:15px}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 1rem/1.45 var(--font);font-variant-numeric:tabular-nums}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:4px}
+h1,h2,h3{margin:0;font-weight:650;letter-spacing:-.005em}
+h2{font-size:1.15rem}
+h3{font-size:1rem}
+p{margin:0}
+.muted{color:var(--ink-2)}
+.small{font-size:.87rem}
+
+/* top */
+.stick{position:sticky;top:0;z-index:5}
+.top{background:var(--panel);border-bottom:1px solid var(--line);
+  display:flex;align-items:center;gap:20px;padding:0 20px;min-height:56px;flex-wrap:wrap}
+.brand{font-weight:700;font-size:1.1rem;letter-spacing:-.01em;margin-right:4px}
+nav{display:flex;gap:2px;flex:1;min-width:0;overflow-x:auto}
+nav button{background:none;border:0;padding:17px 12px 15px;color:var(--ink-2);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap}
+nav button[aria-current="page"]{color:var(--ink);font-weight:600;border-bottom-color:var(--ink)}
+nav button:hover{color:var(--ink)}
+.status{display:flex;align-items:center;gap:12px;font-size:.87rem;color:var(--ink-2)}
+.btn{background:var(--btn);color:var(--btn-ink);border:1px solid var(--btn);border-radius:8px;padding:8px 14px;font-weight:600;cursor:pointer}
+.btn:hover{opacity:.9}
+.btn[disabled]{opacity:.55;cursor:default}
+.btn.ghost{background:transparent;color:var(--ink);border-color:var(--line)}
+.btn.ghost:hover{border-color:var(--ink-3);opacity:1}
+.btn.danger{background:transparent;color:var(--danger);border-color:var(--danger)}
+.btn.small{padding:5px 10px;font-weight:500;font-size:.87rem}
+.link{background:none;border:0;padding:0;color:var(--ink);text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+
+main{max-width:1240px;margin:0 auto;padding:22px 20px 60px}
+.grid-main{display:grid;grid-template-columns:minmax(0,1fr) 370px;gap:24px;align-items:start}
+.col-main{display:grid;grid-template-columns:minmax(0,1fr);gap:18px;min-width:0}
+.col-receipt{min-width:0}
+.col-receipt{position:sticky;top:78px}
+@media (max-width:960px){
+  .grid-main{grid-template-columns:minmax(0,1fr)}
+  .col-receipt{position:static;order:-1}
+}
+@media (max-width:700px){
+  .top{gap:6px 14px;padding:8px 16px 0}
+  nav{order:3;flex-basis:100%}
+  nav button{padding:10px 12px 9px}
+  .status{margin-left:auto}
+  main{padding:16px 16px 60px}
+}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px 20px}
+.card-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.card-head p{flex-basis:100%}
+
+/* hentebjælke */
+#banner{padding:12px 20px;border-bottom:1px solid var(--line);background:var(--panel)}
+#banner .in{max-width:1240px;margin:0 auto;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+#banner .txt{flex:1;min-width:220px;font-weight:600}
+#banner .txt span{font-weight:400;color:var(--ink-2)}
+#banner.run{background:#e8f1fd;border-color:#b9d2f3}
+#banner.ok{background:#e6f5ee;border-color:#b5dfc9}
+#banner.err{background:#fdeceb;border-color:#f0b9b4}
+@media (prefers-color-scheme: dark){
+  #banner.run{background:#14233a;border-color:#27456f}
+  #banner.ok{background:#12291f;border-color:#235a40}
+  #banner.err{background:#341a18;border-color:#7a2f29}
+}
+.bar{flex-basis:100%;height:6px;border-radius:3px;background:rgba(127,127,127,.25);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--focus);border-radius:3px;transition:width .4s}
+.spin{width:18px;height:18px;border-radius:50%;border:3px solid rgba(127,127,127,.35);border-top-color:var(--focus);animation:sp .9s linear infinite;flex:none}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion: reduce){.spin{animation-duration:3s}}
+a.btn,label.btn{display:inline-block;text-decoration:none}
+.foot{max-width:1200px;margin:24px auto;padding:0 16px;word-break:break-all}
+.btn.busy{display:inline-flex;align-items:center;gap:8px}
+.btn.busy .spin{width:14px;height:14px;border-width:2px;border-color:rgba(127,127,127,.5);border-top-color:currentColor}
+.radios{display:grid;gap:8px}
+.radios label{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;align-items:start;font-weight:600;cursor:pointer;border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+.radios label:has(input:checked){border-color:var(--ink)}
+.radios .hint{grid-column:2;font-weight:400;color:var(--ink-2);font-size:.84rem}
+.radios input{margin-top:3px}
+
+/* notices */
+.note{background:var(--note);border:1px solid var(--note-line);border-radius:10px;padding:12px 16px;display:flex;gap:14px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.note p{flex:1;min-width:220px}
+
+/* kvittering */
+.receipt{position:relative;background:var(--paper);color:var(--paper-ink);font-family:var(--mono);font-size:.84rem;line-height:1.4;
+  padding:22px 20px 26px;border-radius:3px 3px 0 0;box-shadow:0 1px 0 rgba(0,0,0,.06),0 8px 24px -12px rgba(0,0,0,.35);margin-bottom:12px}
+.receipt::after{content:"";position:absolute;left:0;right:0;bottom:-9px;height:10px;
+  background:linear-gradient(135deg,var(--paper) 5px,transparent 0) 0 0/12px 10px repeat-x,linear-gradient(225deg,var(--paper) 5px,transparent 0) 0 0/12px 10px repeat-x}
+.r-title{font-size:1.1rem;font-weight:700;text-align:center;font-family:var(--font);letter-spacing:-.005em}
+.r-date{text-align:center;color:var(--paper-2);margin-top:2px}
+.r-rule{border:0;border-top:1px dashed var(--paper-line);margin:12px 0}
+.r-store{display:flex;justify-content:space-between;gap:10px;font-weight:700;margin-top:12px;align-items:center}
+.r-store .zdot{margin-right:7px}
+.r-line{display:flex;justify-content:space-between;gap:10px;margin-top:6px}
+.r-name{min-width:0;overflow-wrap:anywhere}
+.r-amt{white-space:nowrap}
+.r-sub{color:var(--paper-2);font-size:.78rem}
+.r-sum{display:flex;justify-content:space-between;gap:10px;margin-top:4px}
+.r-net{display:flex;justify-content:space-between;gap:10px;font-size:1.25rem;font-weight:700;margin-top:8px;font-family:var(--font)}
+.receipt .empty{font-family:var(--font);text-align:center;color:var(--paper-2);padding:10px 4px}
+.zdot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--z0);vertical-align:baseline;flex:none}
+
+/* tabeller */
+.tablewrap{overflow-x:auto;margin:0 -4px}
+table{border-collapse:collapse;width:100%;font-size:.93rem}
+th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line-2);vertical-align:top}
+th{font-weight:600;color:var(--ink-2);font-size:.87rem;white-space:nowrap}
+td.num,th.num{text-align:right;white-space:nowrap}
+tbody tr:last-child td{border-bottom:0}
+tr.click{cursor:pointer}
+tr.click:hover td{background:var(--line-2)}
+.badge{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:1px 8px;font-size:.78rem;color:var(--ink-2);white-space:nowrap}
+.badge.in{border-color:var(--ink);color:var(--ink)}
+.badge.warn{border-color:var(--note-line);background:var(--note)}
+.empty{color:var(--ink-2);padding:8px 0}
+
+/* graf */
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:.87rem;color:var(--ink-2);margin-bottom:6px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+#chart{position:relative}
+#chart svg{display:block;width:100%;height:auto;overflow:visible}
+#chart text{font:400 11.5px var(--font);fill:var(--ink-2)}
+.tip{position:absolute;pointer-events:none;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-size:.84rem;
+  box-shadow:0 6px 18px -8px rgba(0,0,0,.4);white-space:nowrap;transform:translate(-50%,-110%);z-index:2}
+.stats{display:flex;gap:28px;flex-wrap:wrap;margin:12px 0 0}
+.stats div{min-width:0}
+.stats dt{font-size:.82rem;color:var(--ink-2)}
+.stats dd{margin:0;font-weight:600}
+
+/* formularer */
+[hidden]{display:none !important}
+.form{display:grid;gap:14px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.row3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+@media (max-width:640px){.row2,.row3{grid-template-columns:1fr}}
+label.f{display:grid;gap:4px;font-weight:600;font-size:.93rem;align-content:start}
+label.f .hint{font-weight:400;color:var(--ink-2);font-size:.84rem}
+input[type=text],input[type=number],input[type=date],input[type=password],select,textarea{
+  width:100%;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-weight:400}
+input:hover,select:hover,textarea:hover{border-color:var(--ink-3)}
+.inl{display:flex;align-items:center;gap:8px}
+.inl .suf{color:var(--ink-2);white-space:nowrap;font-weight:400}
+.checks{display:flex;gap:16px;flex-wrap:wrap}
+.checks label{display:inline-flex;gap:6px;align-items:center;font-weight:400}
+.filters{display:flex;gap:12px;flex-wrap:wrap;align-items:end;margin-bottom:14px}
+.filters label.f{min-width:150px}
+.stack{display:grid;grid-template-columns:minmax(0,1fr);gap:18px}
+.savebar{position:sticky;bottom:0;background:var(--bg);padding:12px 0;border-top:1px solid var(--line);display:flex;gap:10px}
+.geo-res{display:grid;gap:6px;margin-top:8px}
+.geo-res button{text-align:left;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 10px;cursor:pointer}
+.geo-res button:hover{border-color:var(--ink)}
+dialog{border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--ink);padding:0;width:min(560px,calc(100vw - 24px));max-height:calc(100vh - 24px)}
+dialog::backdrop{background:rgba(10,14,20,.55)}
+dialog form{padding:20px;display:grid;gap:14px}
+.dlg-actions{display:flex;gap:10px;justify-content:space-between;align-items:center;flex-wrap:wrap}
+.dlg-actions .right{display:flex;gap:10px;margin-left:auto}
+#toast{position:fixed;left:20px;bottom:20px;max-width:min(520px,calc(100vw - 40px));background:var(--btn);color:var(--btn-ink);
+  padding:10px 14px;border-radius:8px;font-size:.93rem;opacity:0;pointer-events:none;transition:opacity .15s}
+#toast.show{opacity:1}
+#toast.err{background:var(--danger);color:#fff}
+</style>
+</head>
+<body>
+<div class="stick">
+<header class="top">
+  <div class="brand">Tilbudsagent</div>
+  <nav aria-label="Sider" id="nav"></nav>
+  <div class="status"><span id="sidste"></span><button class="btn" id="hent">Hent tilbud</button><button class="btn ghost small" data-do="afslut" title="Lukker Tilbudsagent helt">Afslut</button></div>
+</header>
+<div id="banner" hidden role="status" aria-live="polite"></div>
+</div>
+<main id="view"></main>
+<footer class="foot small muted" id="foot"></footer>
+
+<dialog id="dlg-vare"><form method="dialog" id="f-vare"></form></dialog>
+<dialog id="dlg-manuel"><form method="dialog" id="f-manuel"></form></dialog>
+<div id="toast" role="status"></div>
+
+<script>
+"use strict";
+const $ = (s, r=document) => r.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const nf2 = new Intl.NumberFormat("da-DK",{minimumFractionDigits:2,maximumFractionDigits:2});
+const nf1 = new Intl.NumberFormat("da-DK",{maximumFractionDigits:1});
+const nf3 = new Intl.NumberFormat("da-DK",{maximumFractionDigits:3});
+const kr = x => nf2.format(x), km = x => nf1.format(x), mg = x => nf3.format(x);
+const pct = x => Math.round(x*100) + " %";
+const dKort = iso => iso ? new Date(iso.slice(0,10)+"T12:00").toLocaleDateString("da-DK",{day:"numeric",month:"short"}) : "?";
+const dLang = iso => new Date(iso+"T12:00").toLocaleDateString("da-DK",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
+const TABS = [["overblik","Overblik"],["tilbud","Tilbud"],["varer","Varer"],["indstillinger","Indstillinger"]];
+
+let S = null, tab = "overblik", chartVare = null, filt = {vare:"",butik:"",tur:false,q:""}, draft = null, tblView = false, lastHist = null;
+
+async function api(path, body){
+  const opt = body === undefined ? {} : {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)};
+  let r;
+  try { r = await fetch(path, opt); } catch(e){ throw new Error("Appen svarer ikke. Er Tilbudsagent lukket? Start den igen."); }
+  const j = await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error(j.fejl || "Noget gik galt.");
+  return j;
+}
+let toastT;
+function toast(msg, err=false){
+  const t = $("#toast"); t.textContent = msg; t.className = "show" + (err ? " err" : "");
+  clearTimeout(toastT); toastT = setTimeout(()=> t.className = "", err ? 7000 : 3500);
+}
+async function load(){ S = await api("/api/state"); renderTop(); render(); $("#foot").textContent = `Tilbudsagent ${S.version} · data: ${S.data_mappe}`; }
+async function act(fn, ok){ try{ await fn(); if(ok) toast(ok); await load(); }catch(e){ toast(e.message, true); } }
+
+/* zonefarver: de tre nærmeste zoner får serie-farverne, resten grå */
+function zoneOrder(){
+  const m = {};
+  for(const b of Object.values(S.cfg.butikker)) m[b.zone] = Math.min(m[b.zone] ?? 1e9, b.afstand_km);
+  return Object.keys(m).sort((a,b)=> m[a]-m[b]);
+}
+const zc = z => { const i = zoneOrder().indexOf(z); return i>=0 && i<3 ? `var(--z${i+1})` : "var(--z0)"; };
+const zdot = z => `<span class="zdot" style="background:${zc(z)}"></span>`;
+
+/* ---------- top ---------- */
+function renderTop(){
+  $("#nav").innerHTML = TABS.map(([k,t]) => `<button data-tab="${k}" ${k===tab?'aria-current="page"':''}>${t}</button>`).join("");
+  const d = S.dash, h = S.hent || {};
+  $("#sidste").textContent = h.koerer ? "" : d.sidste_hentning ? "Sidst hentet " + dKort(d.sidste_hentning) : "Ikke hentet endnu";
+  const b = $("#hent"); b.disabled = !!h.koerer; b.className = "btn" + (h.koerer ? " busy" : "");
+  b.innerHTML = h.koerer ? '<span class="spin" aria-hidden="true"></span>Henter …' : "Hent tilbud";
+  renderBanner();
+}
+let doneMsg = null, doneT;
+function showDone(type, text, ms){ doneMsg = {type, text}; renderBanner(); clearTimeout(doneT); if(ms) doneT = setTimeout(() => { doneMsg = null; renderBanner(); }, ms); }
+function renderBanner(){
+  const b = $("#banner"), h = (S && S.hent) || {};
+  if(h.koerer){
+    const p = h.i_alt ? Math.round((h.gjort || 0) / h.i_alt * 100) : 0;
+    b.hidden = false; b.className = "run";
+    b.innerHTML = `<div class="in"><span class="spin" aria-hidden="true"></span><div class="txt">Henter tilbud fra Tjek …
+      <span>søgning ${h.gjort || 0} af ${h.i_alt || "?"}${h.nu ? " («" + esc(h.nu) + "»)" : ""} · ${h.nye || 0} nye tilbud fundet. Det tager typisk et par minutter, så lad siden stå åben.</span></div>
+      <div class="bar"><i style="width:${p}%"></i></div></div>`;
+  } else if(doneMsg){
+    b.hidden = false; b.className = doneMsg.type;
+    b.innerHTML = `<div class="in"><div class="txt">${esc(doneMsg.text)}</div><button class="btn ghost small" data-dismiss>Luk</button></div>`;
+  } else { b.hidden = true; b.className = ""; b.innerHTML = ""; }
+}
+$("#nav").addEventListener("click", e => { const b = e.target.closest("button[data-tab]"); if(b){ tab = b.dataset.tab; draft = null; location.hash = tab; renderTop(); render(); window.scrollTo(0,0);} });
+$("#hent").addEventListener("click", async () => {
+  try{ await api("/api/hent", {}); }catch(e){ return toast(e.message, true); }
+  S.hent = {koerer:true, gjort:0, i_alt:0, nye:0}; doneMsg = null; renderTop(); poll();
+});
+async function poll(){
+  const h = await api("/api/hent/status").catch(()=>null);
+  if(h){ S.hent = h; renderTop(); }
+  if(h && h.koerer){ setTimeout(poll, 1500); return; }
+  await load();
+  if(h && h.fejl) showDone("err", "Hentning mislykkedes: " + h.fejl, 0);
+  else if(h && h.resultat){
+    const r = h.resultat;
+    if(r.fejl && !r.nye) showDone("err", `Tjek svarede ikke (${r.fejl} søgninger fejlede)${r.fejltekster?.length ? ": " + r.fejltekster[0] : ""}.`, 0);
+    else showDone("ok", `Færdig: ${r.nye} nye tilbud hentet${r.fejl ? `, ${r.fejl} søgninger fejlede` : ""}.`, 12000);
+  }
+}
+document.addEventListener("click", e => { if(e.target.closest("[data-dismiss]")){ doneMsg = null; renderBanner(); } });
+
+/* ---------- overblik ---------- */
+function overblik(){
+  const d = S.dash;
+  let notes = "";
+  if(d.antal_obs === 0){
+    return `<div class="card" style="max-width:640px;margin:40px auto"><h2>Ingen tilbud endnu</h2>
+      <p class="muted" style="margin:8px 0 16px">Tryk på Hent tilbud for at hente ugens tilbud fra Tjek. Vil du bare se, hvordan appen virker, kan du indlæse demodata med syntetiske priser.</p>
+      <div class="inl"><button class="btn" data-do="hent" ${S.hent?.koerer ? "disabled" : ""}>Hent tilbud</button><button class="btn ghost" data-do="demo-on">Indlæs demodata</button></div></div>`;
+  }
+  if(d.demo) notes += `<div class="note"><p><b>Du ser demodata.</b> Priserne er syntetiske og kun til at afprøve appen.</p><button class="btn ghost small" data-do="demo-off">Fjern demodata</button></div>`;
+  const h = S.hent || {};
+  if(h.resultat && (h.resultat.fejl || !h.resultat.nye)){
+    const r = h.resultat, uk = Object.entries(r.ukendte||{}).map(([n,c])=>`${esc(n||"?")} (${c})`).join(", ");
+    notes += `<div class="note"><p><b>Sidste hentning gav ${r.nye} nye tilbud${r.fejl?` og ${r.fejl} fejlede kald`:""}.</b>
+      ${r.fejltekster?.length ? " " + esc(r.fejltekster[0]) : ""}
+      ${uk ? `<br><span class="small">Forhandlere der ikke matchede en butik: ${uk}. Ret «Tjek-navn» under Indstillinger.</span>` : ""}</p></div>`;
+  }
+  const mangler = d.varestatus.filter(v => /^(estimat|ukendt)/.test(v.kilde)).length;
+  if(mangler) notes += `<div class="note"><p>Normalpris mangler for <b>${mangler}</b> ${mangler===1?"vare":"varer"}. Rabatterne er estimeret ud fra tidligere tilbud og bliver for lave.</p><button class="btn ghost small" data-tab-go="varer">Udfyld under Varer</button></div>`;
+
+  const afv = d.afviste.length ? `<section class="card"><div class="card-head"><h2>Ikke værd at køre efter</h2>
+      <p class="muted small">Hvad ekstra tilbud i disse zoner ville give, mod hvad kørslen koster oven i turen.</p></div>
+      <div class="tablewrap"><table><thead><tr><th>Zone</th><th>Butikker</th><th class="num">Ekstra besparelse</th><th class="num">Ekstra kørsel</th><th class="num">Mangler</th></tr></thead><tbody>
+      ${d.afviste.map(a => { const gap = a.ekstra_cost - a.ekstra_sav;
+        return `<tr><td>${zdot(a.zone)} ${esc(a.zone)}</td><td>${a.butikker.map(esc).join(", ")}</td><td class="num">${kr(a.ekstra_sav)} kr</td><td class="num">${kr(a.ekstra_cost)} kr</td><td class="num"><b>${gap>0?kr(gap)+" kr":"løber rundt"}</b></td></tr>`; }).join("")}
+      </tbody></table></div></section>` : "";
+
+  const opts = S.varer.map(v => `<option value="${esc(v.id)}" ${v.id===chartVare?"selected":""}>${esc(v.navn)}</option>`).join("");
+  const graf = `<section class="card"><div class="card-head"><h2>Prishistorik</h2><label class="small muted">Vare <select id="hv" style="width:auto">${opts}</select></label></div>
+      <div class="legend" id="legend">${zoneOrder().slice(0,3).map(z=>`<span>${zdot(z)} ${esc(z)}</span>`).join("")}${zoneOrder().length>3?`<span>${zdot("")} øvrige</span>`:""}
+        <span><svg width="22" height="8" aria-hidden="true"><line x1="0" y1="4" x2="22" y2="4" stroke="var(--ink-2)" stroke-width="2"/></svg> billigste pr. uge</span></div>
+      <div id="chart"></div><dl class="stats" id="hstats"></dl>
+      <p style="margin-top:10px"><button class="link small" id="tbl">${tblView?"Vis som graf":"Vis som tabel"}</button></p></section>`;
+
+  const lager = d.lager.length ? `<section class="card"><div class="card-head"><h2>Lagerkøb nær bundpris</h2><p class="muted small">Tilbud tæt på den laveste pris, agenten har set, og mindst ${pct(S.cfg.regler.lager_rabat)} under normalpris.</p></div>
+      <div class="tablewrap"><table><tbody>${d.lager.map(l=>`<tr><td>${esc(l.vare)}</td><td>${esc(l.butik_navn)}</td><td class="num">${kr(l.ep)} kr/${l.enhed}</td><td class="num">${pct(l.rabat)} under</td><td class="num">op til ${mg(l.maengde)} ${l.enhed}</td></tr>`).join("")}</tbody></table></div></section>` : "";
+
+  return `<div class="grid-main"><div class="col-main">${notes}${afv}${graf}${lager}</div><aside class="col-receipt">${receipt()}</aside></div>`;
+}
+
+function receipt(){
+  const d = S.dash, t = d.tur;
+  let h = `<div class="receipt"><div class="r-title">Ugens tur</div><div class="r-date">${esc(dLang(d.idag))}</div><hr class="r-rule">`;
+  if(!t.butikker.length){
+    return h + `<p class="empty">Ingen tur er værd at køre efter denne uge. Ingen tilbud klarer rabatgrænsen på ${pct(S.cfg.regler.min_rabat)} efter kørsel.</p></div>`;
+  }
+  for(const b of t.butikker){
+    h += `<div class="r-store"><span>${zdot(b.zone)}${esc(b.navn)}</span><span>${km(b.km)} km</span></div>`;
+    for(const l of b.linjer){
+      h += `<div class="r-line"><span class="r-name">${esc(l.vare)}</span><span class="r-amt">+${kr(l.besparelse)}</span></div>
+            <div class="r-sub">${mg(l.maengde)} ${l.enhed}${l.lager?" (lager)":""} · ${kr(l.ep)} kr/${l.enhed} · ${pct(l.rabat)} under${l.betingelse?" · ⚠ "+esc(l.betingelse):""}</div>`;
+    }
+  }
+  h += `<hr class="r-rule"><div class="r-sum"><span>Besparelse</span><span>+${kr(t.sav)}</span></div>`;
+  for(const k of t.koersel){
+    h += k.sunk
+      ? `<div class="r-sum"><span>Kørsel ${esc(k.zone)}</span><span>0,00</span></div><div class="r-sub">du handler alligevel her</div>`
+      : `<div class="r-sum"><span>Kørsel ${esc(k.zone)}</span><span>−${kr(k.kr)}</span></div><div class="r-sub">${km(k.km_tur_retur)} km tur/retur</div>`;
+  }
+  const antal = t.butikker.length;
+  h += `<div class="r-sum"><span>Butiksstop (${antal} × ${kr(S.cfg.koersel.stop_kr)})</span><span>−${kr(t.stop)}</span></div>`;
+  if(t.margin) h += `<div class="r-sum"><span>Margin</span><span>−${kr(t.margin)}</span></div>`;
+  h += `<hr class="r-rule"><div class="r-net"><span>Netto</span><span>+${kr(t.net)}</span></div></div>`;
+  return h;
+}
+
+/* ---------- prisgraf ---------- */
+async function loadHist(){
+  const sel = $("#hv"); if(!sel) return;
+  if(!chartVare || !S.varer.some(v => v.id === chartVare)) chartVare = S.varer[0]?.id;
+  if(!chartVare){ $("#chart").innerHTML = '<p class="empty">Tilføj en vare under Varer for at se prishistorik.</p>'; return; }
+  sel.value = chartVare;
+  try{ lastHist = await api("/api/historik?vare=" + encodeURIComponent(chartVare)); drawChart(); }
+  catch(e){ $("#chart").innerHTML = `<p class="empty">${esc(e.message)}</p>`; }
+}
+function niceTicks(a, b, n=5){
+  const span = b - a || 1, raw = span / n, p = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1,2,2.5,5,10].map(m=>m*p).find(s => s >= raw) || raw;
+  const out = []; for(let v = Math.ceil(a/step)*step; v <= b + 1e-9; v += step) out.push(+v.toFixed(6)); return out;
+}
+function drawChart(){
+  const h = lastHist, el = $("#chart"); if(!h || !el) return;
+  const st = $("#hstats");
+  st.innerHTML = `<div><dt>Normalpris</dt><dd>${h.normal ? kr(h.normal)+" kr/"+h.enhed : "–"}</dd><dd class="small muted" style="font-weight:400">${esc(h.normal_kilde)}</dd></div>
+    <div><dt>Bundpris set</dt><dd>${h.bund ? kr(h.bund)+" kr/"+h.enhed : "–"}</dd></div>
+    <div><dt>Målpris</dt><dd>${h.maal ? kr(h.maal)+" kr/"+h.enhed : "–"}</dd></div>`;
+  if(!h.punkter.length){ el.innerHTML = `<p class="empty">Ingen prishistorik for ${esc(h.vare)} endnu.</p>`; return; }
+  if(tblView){
+    el.innerHTML = `<div class="tablewrap"><table><thead><tr><th>Dato</th><th>Butik</th><th class="num">kr/${h.enhed}</th></tr></thead><tbody>${
+      [...h.punkter].reverse().slice(0,60).map(p=>`<tr><td>${dKort(p.d)}</td><td>${zdot(p.zone)} ${esc(p.navn)}</td><td class="num">${kr(p.ep)}</td></tr>`).join("")}</tbody></table></div>`;
+    return;
+  }
+  const W = Math.max(300, el.clientWidth), H = Math.round(Math.min(300, Math.max(220, W*.42)));
+  const m = {l:50, r:14, t:12, b:28};
+  const pts = h.punkter.map(p => ({...p, t: Date.parse(p.d + "T12:00:00")}));
+  let t0 = Math.min(...pts.map(p=>p.t)), t1 = Math.max(...pts.map(p=>p.t), Date.now());
+  if(t1 - t0 < 14*864e5) t0 = t1 - 14*864e5;
+  const ys = pts.map(p=>p.ep); [h.normal,h.maal,h.bund].forEach(v => v && ys.push(v));
+  let y0 = Math.min(...ys), y1 = Math.max(...ys); const pad = (y1 - y0 || y1*.2 || 1) * .14; y0 = Math.max(0, y0 - pad); y1 += pad;
+  const sx = t => m.l + (t - t0) / (t1 - t0) * (W - m.l - m.r), sy = v => H - m.b - (v - y0) / (y1 - y0) * (H - m.t - m.b);
+  let g = `<text x="0" y="9">kr/${h.enhed}</text>`;
+  for(const v of niceTicks(y0, y1)) g += `<line x1="${m.l}" x2="${W-m.r}" y1="${sy(v)}" y2="${sy(v)}" stroke="var(--line)" stroke-width="1"/><text x="${m.l-8}" y="${sy(v)+4}" text-anchor="end">${nf1.format(v)}</text>`;
+  const months = []; const dt = new Date(t0); dt.setDate(1); dt.setHours(12);
+  for(let c = new Date(dt); c.getTime() <= t1; c.setMonth(c.getMonth()+1)) if(c.getTime() >= t0) months.push(new Date(c));
+  const xt = months.length >= 2 ? months.map(c => [c.getTime(), c.toLocaleDateString("da-DK",{month:"short"})]) : [[t0, dKort(new Date(t0).toISOString())],[t1, dKort(new Date(t1).toISOString())]];
+  for(const [t, lab] of xt) g += `<text x="${sx(t)}" y="${H-8}" text-anchor="middle">${lab}</text>`;
+  const ref = (v, lab, dash) => v ? `<line x1="${m.l}" x2="${W-m.r}" y1="${sy(v)}" y2="${sy(v)}" stroke="var(--ink-3)" stroke-width="1.5" stroke-dasharray="${dash}"/><text x="${m.l+4}" y="${sy(v)-5}">${lab} ${kr(v)}</text>` : "";
+  g += ref(h.normal, "Normalpris", "6 4") + ref(h.maal, "Målpris", "2 4");
+  const wk = {}; pts.forEach(p => { if(!(p.d in wk) || p.ep < wk[p.d].ep) wk[p.d] = p; });
+  const line = Object.values(wk).sort((a,b)=>a.t-b.t).map((p,i)=> (i?"L":"M") + sx(p.t).toFixed(1) + " " + sy(p.ep).toFixed(1)).join(" ");
+  g += `<path d="${line}" fill="none" stroke="var(--ink-2)" stroke-width="2" stroke-linejoin="round"/>`;
+  g += pts.map((p,i) => `<circle cx="${sx(p.t).toFixed(1)}" cy="${sy(p.ep).toFixed(1)}" r="4" fill="${zc(p.zone)}" stroke="var(--panel)" stroke-width="2"/>`).join("");
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Prishistorik for ${esc(h.vare)}">${g}</svg><div class="tip" hidden></div>`;
+  const svg = $("svg", el), tip = $(".tip", el);
+  svg.addEventListener("mousemove", e => {
+    const r = svg.getBoundingClientRect(), k = W / r.width, x = (e.clientX - r.left) * k, y = (e.clientY - r.top) * k;
+    let best = null, bd = 22;
+    for(const p of pts){ const d = Math.hypot(sx(p.t) - x, sy(p.ep) - y); if(d < bd){ bd = d; best = p; } }
+    if(!best){ tip.hidden = true; return; }
+    tip.hidden = false; tip.style.left = (sx(best.t) / k) + "px"; tip.style.top = (sy(best.ep) / k) + "px";
+    tip.innerHTML = `${zdot(best.zone)} <b>${esc(best.navn)}</b><br>${kr(best.ep)} kr/${h.enhed} · ${dKort(best.d)}`;
+  });
+  svg.addEventListener("mouseleave", () => tip.hidden = true);
+}
+new ResizeObserver(() => { if(tab === "overblik" && lastHist) drawChart(); }).observe(document.body);
+
+/* ---------- tilbud ---------- */
+function tilbudView(){
+  const d = S.dash;
+  const rows = d.tilbud.filter(t => (!filt.vare || t.vare_id === filt.vare) && (!filt.butik || t.butik === filt.butik)
+    && (!filt.tur || t.i_tur) && (!filt.q || (t.tekst + " " + t.vare).toLowerCase().includes(filt.q.toLowerCase())))
+    .sort((a,b) => (b.rabat ?? -1) - (a.rabat ?? -1));
+  const vOpt = `<option value="">Alle varer</option>` + S.varer.map(v=>`<option value="${esc(v.id)}" ${filt.vare===v.id?"selected":""}>${esc(v.navn)}</option>`).join("");
+  const bOpt = `<option value="">Alle butikker</option>` + Object.entries(S.cfg.butikker).map(([id,b])=>`<option value="${esc(id)}" ${filt.butik===id?"selected":""}>${esc(b.navn)}</option>`).join("");
+  return `<section class="card"><div class="card-head"><h2>Aktive tilbud</h2><button class="btn ghost small" data-do="manuel">Indtast tilbud manuelt</button></div>
+    <div class="filters"><label class="f small">Vare<select data-f="vare">${vOpt}</select></label><label class="f small">Butik<select data-f="butik">${bOpt}</select></label>
+      <label class="f small">Søg i tilbudstekst<input type="text" data-f="q" value="${esc(filt.q)}"></label>
+      <label class="small inl"><input type="checkbox" data-f="tur" ${filt.tur?"checked":""}> Kun tilbud i ugens tur</label></div>
+    ${rows.length ? `<div class="tablewrap"><table><thead><tr><th>Vare</th><th>Butik</th><th>Tilbud</th><th class="num">Pris</th><th class="num">Enhedspris</th><th class="num">Rabat</th><th>Gælder</th><th></th></tr></thead><tbody>
+      ${rows.map(t=>`<tr><td>${esc(t.vare)}</td><td>${zdot(t.zone)} ${esc(t.butik_navn)}</td><td>${esc(t.tekst)}</td><td class="num">${kr(t.pris)}</td>
+        <td class="num">${t.ep ? kr(t.ep)+" kr/"+t.enhed : '<span class="badge warn">ukendt</span>'}</td><td class="num">${t.rabat!=null ? pct(t.rabat) : "–"}</td>
+        <td>${dKort(t.fra)} – ${dKort(t.til)}</td><td>${t.i_tur?'<span class="badge in">i turen</span> ':""}${t.mistaenkelig?'<span class="badge warn" title="Rabatten er højere end grænsen i Indstillinger. Det er oftest en forkert pakkestørrelse.">urealistisk rabat – ikke brugt</span> ':""}${t.betingelse?`<span class="badge warn">${esc(t.betingelse)}</span>`:""}${t.kilde==="manuel"?' <span class="badge">manuel</span>':""}</td></tr>`).join("")}
+      </tbody></table></div>` : `<p class="empty">Ingen tilbud matcher. ${d.antal_obs ? "Prøv at fjerne et filter." : "Tryk på Hent tilbud øverst."}</p>`}
+    ${d.uafklaret.length ? `<p class="small muted" style="margin-top:12px">${d.uafklaret.length} tilbud mangler pakkestørrelse, så enhedsprisen kunne ikke regnes ud. De tæller ikke med i turen.</p>` : ""}</section>`;
+}
+
+/* ---------- varer ---------- */
+function varerView(){
+  const st = Object.fromEntries(S.dash.varestatus.map(v => [v.id, v]));
+  return `<section class="card"><div class="card-head"><h2>Varer</h2><button class="btn" data-do="vare-ny">Tilføj vare</button>
+    <p class="muted small">Agenten søger efter disse varer hver gang du henter tilbud. Klik på en række for at rette den. Vil du både have din faste mærkevare og en billig erstatning, så tilføj varen to gange: én med bestemte mærker og én med alle mærker.</p></div>
+    ${S.varer.length ? `<div class="tablewrap"><table><thead><tr><th>Vare</th><th>Søger efter</th><th class="num">Normalpris</th><th class="num">Målpris</th><th class="num">Køber pr. gang</th><th class="num">Maks. lager</th><th class="num">Priser gemt</th></tr></thead><tbody>
+    ${S.varer.map(v=>`<tr class="click" data-vare="${esc(v.id)}" tabindex="0"><td><b>${esc(v.navn)}</b> <span class="muted">(${v.enhed})</span></td><td>${v.type==="specifik" ? `<span class="badge in">kun bestemte</span> ${esc(v.maerker.join(", "))}` : `<span class="badge">alle mærker</span> ${esc(v.soeg.join(", "))}`}${v.type!=="specifik" && v.udeluk_maerker.length?`<br><span class="small muted">undgår: ${esc(v.udeluk_maerker.join(", "))}</span>`:""}${v.udeluk.length?`<br><span class="small muted">uden ordene: ${esc(v.udeluk.join(", "))}</span>`:""}</td>
+      <td class="num">${v.normal ? kr(v.normal) : '<span class="muted">estimeres</span>'}</td><td class="num">${v.maal ? kr(v.maal) : "–"}</td><td class="num">${mg(v.koeb)} ${v.enhed}</td><td class="num">${v.lager ? mg(v.lager)+" "+v.enhed : "–"}</td><td class="num">${st[v.id]?.obs ?? 0}</td></tr>`).join("")}
+    </tbody></table></div>` : `<p class="empty">Ingen varer endnu. Tilføj den første.</p>`}</section>`;
+}
+function vareDialog(id){
+  const v = S.varer.find(x => x.id === id) || {navn:"",enhed:"kg",type:"generisk",maerker:[],udeluk_maerker:[],soeg:[],udeluk:[],normal:"",maal:"",koeb:1,lager:""};
+  const f = $("#f-vare"), ny = !id;
+  const enh = () => $("#v-enhed").value;
+  f.innerHTML = `<h2>${ny?"Tilføj vare":"Ret "+esc(v.navn)}</h2>
+    <input type="hidden" id="v-id" value="${esc(id||"")}">
+    <div class="row2"><label class="f">Navn<input type="text" id="v-navn" value="${esc(v.navn)}" required></label>
+      <label class="f">Enhed<select id="v-enhed"><option value="kg">kg</option><option value="l">liter</option><option value="stk">stk (også ruller, æg)</option></select></label></div>
+    <div class="radios" role="radiogroup" aria-label="Mærke">
+      <label><input type="radio" name="v-type" value="generisk" ${v.type !== "specifik" ? "checked" : ""}><span>Alle mærker</span><span class="hint">Agenten tager det billigste tilbud, uanset mærke. Du kan undgå bestemte mærker.</span></label>
+      <label><input type="radio" name="v-type" value="specifik" ${v.type === "specifik" ? "checked" : ""}><span>Kun bestemte mærker eller produkter</span><span class="hint">Fx din faste ketchup. Tilbud på andre mærker ignoreres.</span></label>
+    </div>
+    <div id="blk-gen" class="form">
+      <label class="f">Søger efter<input type="text" id="v-soeg" value="${esc(v.soeg.join(", "))}"><span class="hint">Adskil flere med komma, fx: formalet kaffe, filterkaffe. Tom = varens navn.</span></label>
+      <label class="f">Undgå mærker<input type="text" id="v-udmaerke" value="${esc((v.udeluk_maerker || []).join(", "))}"><span class="hint">Fx: private label, premier. Tilbud med disse ord ignoreres.</span></label>
+    </div>
+    <div id="blk-spec" class="form" hidden>
+      <label class="f">Mærke eller produkt<input type="text" id="v-maerker" value="${esc((v.maerker || []).join(", "))}" placeholder="fx heinz ketchup, kavli ketchup"><span class="hint">Skriv, hvad tilbuddets overskrift skal indeholde. Alle ordene i hvert felt skal være med. Flere adskilles med komma.</span></label>
+    </div>
+    <label class="f">Ignorer tilbud med ordene<input type="text" id="v-udeluk" value="${esc(v.udeluk.join(", "))}"><span class="hint">Fx: kapsel, instant. Fjerner fejlmatch som ikke er den vare, du leder efter.</span></label>
+    <div class="row2"><label class="f">Normalpris<span class="inl"><input type="number" step="any" min="0" id="v-normal" value="${v.normal ?? ""}"><span class="suf" data-u>kr/kg</span></span><span class="hint">Din kendte hyldepris. Gør rabatterne præcise.</span></label>
+      <label class="f">Målpris<span class="inl"><input type="number" step="any" min="0" id="v-maal" value="${v.maal ?? ""}"><span class="suf" data-u>kr/kg</span></span><span class="hint">Giv besked, når prisen er under dette.</span></label></div>
+    <div class="row2"><label class="f">Køber pr. gang<span class="inl"><input type="number" step="any" min="0" id="v-koeb" value="${v.koeb ?? 1}"><span class="suf" data-e>kg</span></span><span class="hint">Bruges til at regne besparelsen ud.</span></label>
+      <label class="f">Maks. lager<span class="inl"><input type="number" step="any" min="0" id="v-lager" value="${v.lager ?? ""}"><span class="suf" data-e>kg</span></span><span class="hint">Hvor meget du vil lagre ved bundpris. Tom = ingen lagerkøb.</span></label></div>
+    <p class="small muted" id="v-tip"></p>
+    <div class="dlg-actions">${ny ? "" : `<button type="button" class="btn danger" id="v-slet">Slet vare</button>`}<div class="right"><button type="button" class="btn ghost" id="v-annuller">Annuller</button><button class="btn" id="v-gem" value="gem">Gem</button></div></div>`;
+  $("#v-enhed").value = v.enhed;
+  const vis = () => { const sp = f.querySelector("input[name=v-type]:checked").value === "specifik"; $("#blk-gen").hidden = sp; $("#blk-spec").hidden = !sp; };
+  f.querySelectorAll("input[name=v-type]").forEach(r => r.addEventListener("change", vis)); vis();
+  const upd = () => { f.querySelectorAll("[data-u]").forEach(e => e.textContent = "kr/" + enh()); f.querySelectorAll("[data-e]").forEach(e => e.textContent = enh());
+    $("#v-tip").textContent = enh()==="l" ? "Tip: 75 ml = 0,075 liter, 500 ml = 0,5 liter." : enh()==="kg" ? "Tip: 500 g = 0,5 kg." : ""; };
+  $("#v-enhed").addEventListener("change", upd); upd();
+  $("#v-annuller").onclick = () => $("#dlg-vare").close();
+  if(!ny){ let armed = false; $("#v-slet").onclick = e => { if(!armed){ armed = true; e.target.textContent = "Bekræft sletning"; return; }
+    $("#dlg-vare").close(); act(() => api("/api/vare/slet", {id}), "Vare slettet."); }; }
+  f.onsubmit = e => { e.preventDefault(); const body = {id: $("#v-id").value || undefined, navn: $("#v-navn").value, enhed: enh(), soeg: $("#v-soeg").value, udeluk: $("#v-udeluk").value,
+      type: f.querySelector("input[name=v-type]:checked").value, maerker: $("#v-maerker").value, udeluk_maerker: $("#v-udmaerke").value,
+      normal: $("#v-normal").value, maal: $("#v-maal").value, koeb: $("#v-koeb").value, lager: $("#v-lager").value};
+    api("/api/vare", body).then(() => { $("#dlg-vare").close(); toast("Gemt."); return load(); }).catch(err => toast(err.message, true)); };
+  $("#dlg-vare").showModal(); $("#v-navn").focus();
+}
+function manuelDialog(){
+  const f = $("#f-manuel");
+  f.innerHTML = `<h2>Indtast tilbud manuelt</h2><p class="small muted">Til butikker, der ikke findes på Tjek, fx ABC Lavpris.</p>
+    <div class="row2"><label class="f">Butik<select id="m-butik">${Object.entries(S.cfg.butikker).map(([id,b])=>`<option value="${esc(id)}">${esc(b.navn)}</option>`).join("")}</select></label>
+      <label class="f">Vare<select id="m-vare">${S.varer.map(v=>`<option value="${esc(v.id)}">${esc(v.navn)}</option>`).join("")}</select></label></div>
+    <div class="row3"><label class="f">Pris for pakken<span class="inl"><input type="number" step="any" min="0" id="m-pris" required><span class="suf">kr</span></span></label>
+      <label class="f">Pakkens mængde<input type="number" step="any" min="0" id="m-maengde" required><span class="hint">I varens enhed, fx 0,5 for 500 g.</span></label>
+      <label class="f">Førpris<input type="number" step="any" min="0" id="m-foer"><span class="hint">Valgfri.</span></label></div>
+    <label class="f">Gælder til<input type="date" id="m-til"><span class="hint">Tom = søndag i denne uge.</span></label>
+    <div class="dlg-actions"><div class="right"><button type="button" class="btn ghost" id="m-annuller">Annuller</button><button class="btn">Gem tilbud</button></div></div>`;
+  $("#m-annuller").onclick = () => $("#dlg-manuel").close();
+  f.onsubmit = e => { e.preventDefault(); api("/api/manuel", {butik:$("#m-butik").value, vare:$("#m-vare").value, pris:$("#m-pris").value, maengde:$("#m-maengde").value, foer:$("#m-foer").value, til:$("#m-til").value})
+    .then(() => { $("#dlg-manuel").close(); toast("Tilbud gemt."); return load(); }).catch(err => toast(err.message, true)); };
+  $("#dlg-manuel").showModal(); $("#m-pris").focus();
+}
+
+/* ---------- indstillinger ---------- */
+const getp = (o, p) => p.split(".").reduce((a,k) => a?.[k], o);
+function setp(o, p, v){ const ks = p.split("."); const last = ks.pop(); ks.reduce((a,k) => a[k] ??= {}, o)[last] = v; }
+function indstillingerView(){
+  if(!draft) draft = JSON.parse(JSON.stringify(S.cfg));
+  const c = draft, k = c.koersel, zoner = [...new Set(Object.values(c.butikker).map(b => b.zone))];
+  const inp = (path, o={}) => { const sc = o.scale || 1, raw = getp(c, path); const val = raw == null ? "" : (sc === 1 ? raw : +(raw*sc).toFixed(4));
+    return `<span class="inl"><input type="${o.type||"number"}" ${o.type?"":'step="any"'} data-p="${path}" ${o.scale?`data-sc="${sc}"`:""} value="${esc(val)}">${o.suf?`<span class="suf">${o.suf}</span>`:""}</span>`; };
+  const butRows = Object.entries(c.butikker).map(([id,b]) => `<tr><td><input type="text" data-p="butikker.${esc(id)}.navn" value="${esc(b.navn)}"></td>
+    <td><span class="inl"><input type="number" step="any" style="min-width:70px" data-p="butikker.${esc(id)}.afstand_km" value="${b.afstand_km}"><span class="suf">km</span></span></td>
+    <td><input type="text" data-p="butikker.${esc(id)}.zone" data-zone value="${esc(b.zone)}" style="min-width:90px"></td>
+    <td><input type="text" data-p="butikker.${esc(id)}.tjek_navn" value="${esc(Array.isArray(b.tjek_navn)?b.tjek_navn.join(", "):b.tjek_navn)}">${b.kilde==="manuel"?'<span class="small muted">indtastes manuelt</span>':""}</td>
+    <td><button class="btn danger small" data-bdel="${esc(id)}">Fjern</button></td></tr>`).join("");
+  return `<div class="stack" style="max-width:900px">
+  <section class="card"><div class="card-head"><h2>Din adresse</h2><p class="muted small">Bruges til at hente tilbud fra aviser i dit område. Adressen slås op hos OpenStreetMap, når du trykker Find.</p></div>
+    <div class="form"><label class="f">Adresse<span class="inl"><input type="text" data-p="adresse" value="${esc(c.adresse||"")}" placeholder="Vejnavn nr., postnummer by"><button class="btn ghost" id="geo" type="button">Find</button></span></label>
+    <div id="geores" class="geo-res"></div>
+    <div class="row3"><label class="f">Breddegrad${inp("tjek.lat")}</label><label class="f">Længdegrad${inp("tjek.lng")}</label><label class="f">Radius${inp("tjek.radius_m",{suf:"meter"})}</label></div>
+    <p class="small muted">${(c.tjek.lat && c.tjek.lng) ? "Koordinaterne er sat." : "Koordinaterne er tomme, så tilbud hentes uden stedsfilter."}</p></div></section>
+
+  <section class="card"><div class="card-head"><h2>Kørsel</h2></div><div class="form"><div class="row3">
+    <label class="f">Kørsel pr. km${inp("koersel.kr_pr_km",{suf:"kr"})}</label>
+    <label class="f">Pris pr. butik${inp("koersel.stop_kr",{suf:"kr"})}<span class="hint">Tid og besvær ved hvert stop.</span></label>
+    <label class="f">Margin pr. tur${inp("koersel.margin_pr_tur_kr",{suf:"kr"})}<span class="hint">Ekstra besparelse en tur skal give.</span></label></div>
+    <div><b class="small">Zoner du alligevel kører til hver uge</b><p class="small muted" style="margin-bottom:6px">Kørsel dertil tæller 0 kr.</p>
+    <div class="checks" id="sunk">${zoner.map(z=>`<label>${zdot(z)}<input type="checkbox" data-sunk="${esc(z)}" ${k.sunk_zoner.includes(z)?"checked":""}> ${esc(z)}</label>`).join("")}</div></div></div></section>
+
+  <section class="card"><div class="card-head"><h2>Butikker</h2><p class="muted small">Afstand er én vej. Butikker i samme zone antages at ligge i samme by, og en tur dertil koster kørsel til den fjerneste. Tjek-navn er det, forhandleren hedder hos Tjek (adskil flere med komma).</p></div>
+    <div class="tablewrap"><table><thead><tr><th>Navn</th><th>Afstand</th><th>Zone</th><th>Tjek-navn</th><th></th></tr></thead><tbody>${butRows}</tbody></table></div>
+    <p style="margin-top:10px"><button class="btn ghost small" id="badd">Tilføj butik</button></p></section>
+
+  <section class="card"><div class="card-head"><h2>Hvornår er et tilbud godt?</h2></div><div class="form"><div class="row3">
+    <label class="f">Mindste rabat${inp("regler.min_rabat",{scale:100,suf:"%"})}<span class="hint">Under normalpris.</span></label>
+    <label class="f">Rabat for lagerkøb${inp("regler.lager_rabat",{scale:100,suf:"%"})}<span class="hint">Sammen med nær bundpris.</span></label>
+    <label class="f">Historik${inp("regler.historik_dage",{suf:"dage"})}<span class="hint">Bruges til normal- og bundpris.</span></label>
+    <label class="f">Mistænkelig rabat fra${inp("regler.max_rabat",{scale:100,suf:"%"})}<span class="hint">Højere rabatter bruges ikke. Oftest en forkert pakkestørrelse.</span></label></div></div></section>
+
+  <section class="card"><div class="card-head"><h2>Sikkerhedskopi og flytning</h2><p class="muted small">Gemmer varer, butikker, adresse og regler i én fil. Prishistorikken følger ikke med; den bygges op igen, når du henter tilbud.</p></div>
+    <div class="inl"><a class="btn ghost small" href="/api/eksport" download>Eksportér opsætning</a>
+    <label class="btn ghost small" style="cursor:pointer">Importér opsætning<input type="file" id="imp" accept=".json,application/json" hidden></label>
+    <a class="btn ghost small" href="/api/fejlrapport" download>Gem fejlrapport</a></div>
+    <p class="small muted" style="margin-top:8px">Fejlrapporten indeholder version, system, varer og seneste log, men ikke din adresse. Send den til den, der har givet dig appen.</p></section>
+
+  <section class="card"><div class="card-head"><h2>Tjek og demodata</h2></div><div class="form">
+    <label class="f">API-nøgle til Tjek<span class="hint">Kun hvis hentning afvises uden. Tom = ingen nøgle.</span><input type="password" data-p="tjek.api_key" value="${esc(c.tjek.api_key||"")}" autocomplete="off"></label>
+    <div class="inl"><button class="btn ghost small" data-do="demo-on" type="button">Indlæs demodata</button><button class="btn ghost small" data-do="demo-off" type="button">Fjern demodata</button></div></div></section>
+
+  <div class="savebar"><button class="btn" id="gem">Gem indstillinger</button><button class="btn ghost" id="fortryd">Fortryd ændringer</button></div></div>`;
+}
+
+/* ---------- render + events ---------- */
+function render(){
+  const v = $("#view");
+  v.innerHTML = tab === "overblik" ? overblik() : tab === "tilbud" ? tilbudView() : tab === "varer" ? varerView() : indstillingerView();
+  if(tab === "overblik"){ const s = $("#hv"); if(s){ s.onchange = () => { chartVare = s.value; loadHist(); }; $("#tbl").onclick = () => { tblView = !tblView; $("#tbl").textContent = tblView ? "Vis som graf" : "Vis som tabel"; drawChart(); }; loadHist(); } }
+}
+document.addEventListener("click", e => {
+  const t = e.target.closest("[data-do],[data-tab-go],[data-vare],[data-bdel],#badd,#gem,#fortryd,#geo,[data-geo]"); if(!t) return;
+  if(t.dataset.tabGo){ tab = t.dataset.tabGo; renderTop(); render(); return; }
+  if(t.dataset.vare){ vareDialog(t.dataset.vare); return; }
+  switch(t.dataset.do){
+    case "hent": $("#hent").click(); return;
+    case "vare-ny": vareDialog(null); return;
+    case "manuel": manuelDialog(); return;
+    case "afslut":
+      if(!confirm("Lukke Tilbudsagent helt? Du kan starte den igen fra programmet.")) return;
+      api("/api/afslut", {}).catch(()=>{}).finally(() => { document.body.innerHTML = '<main style="padding:48px 16px;max-width:560px;margin:auto"><h1>Tilbudsagent er lukket</h1><p>Du kan lukke denne fane. Start programmet igen, når du skal bruge det.</p></main>'; });
+      return;
+    case "demo-on": act(() => api("/api/demo", {paa:true}), "Demodata indlæst."); return;
+    case "demo-off": act(() => api("/api/demo", {paa:false}), "Demodata fjernet."); return;
+  }
+  if(t.dataset.bdel){ delete draft.butikker[t.dataset.bdel]; render(); return; }
+  if(t.id === "badd"){ draft.butikker["ny:" + Math.random().toString(36).slice(2,7)] = {navn:"Ny butik", afstand_km:10, zone:"lokal", tjek_navn:[]}; render(); return; }
+  if(t.id === "fortryd"){ draft = null; render(); return; }
+  if(t.id === "gem"){ act(async () => { await api("/api/indstillinger", draft); draft = null; }, "Indstillinger gemt."); return; }
+  if(t.id === "geo"){ const q = draft.adresse; const box = $("#geores"); box.innerHTML = '<span class="small muted">Søger …</span>';
+    api("/api/geokod", {q}).then(r => { box.innerHTML = r.resultater.length ? r.resultater.map((x,i)=>`<button type="button" data-geo="${i}">${esc(x.navn)}</button>`).join("") : '<span class="small">Ingen adresser fundet. Prøv med vejnavn, nummer og by.</span>'; box._r = r.resultater; })
+      .catch(err => { box.innerHTML = `<span class="small" style="color:var(--danger)">${esc(err.message)}</span>`; }); return; }
+  if(t.dataset.geo != null){ const x = $("#geores")._r[+t.dataset.geo]; draft.adresse = x.navn; draft.tjek.lat = +x.lat.toFixed(5); draft.tjek.lng = +x.lng.toFixed(5); render(); toast("Adresse valgt. Husk at gemme."); }
+});
+document.addEventListener("change", e => {
+  if(e.target.id !== "imp" || !e.target.files[0]) return;
+  const f = e.target.files[0]; e.target.value = "";
+  if(!confirm("Importere opsætningen fra «" + f.name + "»? Dine nuværende varer, butikker og indstillinger erstattes. Prishistorikken beholdes.")) return;
+  act(async () => { let j; try { j = JSON.parse(await f.text()); } catch(_){ throw new Error("Filen er ikke en gyldig opsætningsfil."); } await api("/api/import", j); draft = null; }, "Opsætning importeret.");
+});
+document.addEventListener("keydown", e => { if(e.key === "Enter" && e.target.matches("tr.click")) vareDialog(e.target.dataset.vare); });
+document.addEventListener("input", e => {
+  const el = e.target;
+  if(el.dataset.f){ filt[el.dataset.f] = el.type === "checkbox" ? el.checked : el.value; if(el.type === "text") { const pos = el.selectionStart; render(); const n = $('[data-f="q"]'); n.focus(); n.setSelectionRange(pos,pos); } else render(); return; }
+  if(el.dataset.p && draft){ let v = el.value; if(el.type === "number") v = v === "" ? null : parseFloat(v) / (+el.dataset.sc || 1); setp(draft, el.dataset.p, v); }
+});
+document.addEventListener("change", e => {
+  const el = e.target;
+  if(el.dataset.f === "vare" || el.dataset.f === "butik" || el.dataset.f === "tur"){ filt[el.dataset.f] = el.type === "checkbox" ? el.checked : el.value; render(); }
+  if(el.dataset.sunk && draft){ const s = new Set(draft.koersel.sunk_zoner); el.checked ? s.add(el.dataset.sunk) : s.delete(el.dataset.sunk); draft.koersel.sunk_zoner = [...s]; }
+  if(el.dataset.zone && draft){ render(); }
+});
+
+tab = (TABS.find(t => t[0] === location.hash.slice(1)) || TABS[0])[0];
+load().then(() => { if(S.hent && S.hent.koerer) poll(); }).catch(e => { $("#view").innerHTML = `<div class="card"><h2>Appen svarer ikke</h2><p class="muted">${esc(e.message)}</p></div>`; });
+</script>
+</body>
+</html>

@@ -1,0 +1,20 @@
+# Varekatalog. Semikolon-separeret, punktum eller komma som decimaltegn.
+# enhed: kg | l | stk  (stk bruges også til ruller/æg)
+# soegeord: alternativer adskilt af |  (hvert alternativ søges for sig; alle ord i et alternativ skal findes)
+# udeluk: ord adskilt af |  (tilbud med disse ord ignoreres)
+# normalpris: DIN kendte hyldepris pr. enhed (kr/kg, kr/l, kr/stk). Tom = agenten estimerer fra historik (mindre præcist).
+# maalpris: pris pr. enhed du altid vil have besked om. Tom = ingen.
+# koebsmaengde: hvor meget du normalt køber ad gangen (i enheden). maks_lager: hvor meget du vil lagre ved bundpris (tom = ingen lagerkøb, fx friskvarer).
+id;navn;enhed;soegeord;udeluk;normalpris;maalpris;koebsmaengde;maks_lager
+kaffe;Formalet kaffe;kg;formalet kaffe|filterkaffe;kapsel|kapsl|instant|cappuccino|latte;;;1;4
+toiletpapir;Toiletpapir;stk;toiletpapir;;;;24;72
+koekkenrulle;Køkkenrulle;stk;køkkenrulle;;;;4;12
+tandpasta;Tandpasta;l;tandpasta;tandbørste|tandtråd|mundskyl;;;0.15;0.6
+shampoo;Shampoo;l;shampoo;balsam|conditioner;;;0.5;2
+vaskepulver;Vaskepulver;kg;vaskepulver|vaskemiddel;;;;2;6
+maelk;Mælk;l;mælk;havre|soja|mandel|chokolade;;;6;
+smoer;Smør;kg;smør;smørbar|smørrebrød|smørepålæg|plantedrik|kylling|menu|kage|småkager;;;0.5;2
+ris;Ris;kg;ris;rispapir|riskiks|risengrød|risalamande;;;1;4
+pasta;Pasta;kg;pasta|spaghetti|penne;sauce|saus|pesto|fyldt|salat;;;1;4
+hakket-oksekoed;Hakket oksekød;kg;hakket oksekød|hakket okse;;;;1;
+aeg;Æg;stk;æg;ægte|ægge;;;10;

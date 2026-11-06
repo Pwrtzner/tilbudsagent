@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+*.db
+*.db-journal
+*.log
+build/
+dist/
+*.spec
+config.json
+varer.json
+rapport-*.md

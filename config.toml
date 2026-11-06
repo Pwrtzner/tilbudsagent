@@ -1,0 +1,110 @@
+# Tilbudsagent – konfiguration
+# Alle afstande er EN VEJ i km (opgivet af brugeren). Kørsel regnes tur/retur.
+
+[koersel]
+kr_pr_km = 2.0          # kørselsomkostning pr. km
+stop_kr = 5.0           # lille "friktionspris" pr. butik der besøges (tid/besvær)
+margin_pr_tur_kr = 0.0  # ekstra margen en tur til en ikke-sunk zone skal tjene ind
+# Zoner du alligevel kører til hver uge: kørsel tæller 0 kr dér.
+# ANTAGET: alle butikker i "lokal" ligger i samme by, og du handler dér ugentligt.
+# Sæt til [] hvis kørslen også skal tælle med til de nære butikker.
+sunk_zoner = ["lokal"]
+
+[tjek]
+# Tjeks offentlige tilbuds-API. Endpointet er udokumenteret og kan ændre sig – se README.
+url = "https://squid-api.tjek.com/v2/offers/search"
+api_key = ""            # tom = ingen nøgle sendes (nogle kilder nævner at en nøgle kan kræves)
+lat = 0.0               # SÆT til din hjemmeadresse (0 = ingen stedsfilter)
+lng = 0.0
+radius_m = 30000
+limit = 100
+pause_sek = 1.5         # pause mellem kald – vær venlig ved API'et
+
+[regler]
+min_rabat = 0.15        # et tilbud skal være mindst 15 % under normalpris for at tælle
+lager_rabat = 0.30      # ...og mindst 30 % under + nær bundpris for at udløse lagerkøb
+max_rabat = 0.60        # rabatter over 60 % regnes for urealistiske (forkert pakkestørrelse) og bruges ikke
+historik_dage = 180     # hvor langt tilbage historikken ser (normalpris, bundpris)
+
+# --- Butikker -------------------------------------------------------------
+# zone: butikker i samme zone antages at ligge i samme by/retning.
+# En tur til en zone koster 2 x kr_pr_km x den fjerneste valgte butik i zonen.
+# tjek_navn: navne som forhandleren hedder hos Tjek (små bogstaver, skal matche helt).
+
+[butikker.netto]
+navn = "Netto"
+tjek_navn = ["netto"]
+afstand_km = 6.6
+zone = "lokal"
+
+[butikker.lidl]
+navn = "Lidl"
+tjek_navn = ["lidl"]
+afstand_km = 6.6
+zone = "lokal"
+
+[butikker.superbrugsen]
+navn = "SuperBrugsen"
+tjek_navn = ["superbrugsen"]
+afstand_km = 6.7
+zone = "lokal"
+
+[butikker.matas]
+navn = "Matas"
+tjek_navn = ["matas"]
+afstand_km = 6.8
+zone = "lokal"
+
+[butikker.rema]
+navn = "REMA 1000"
+tjek_navn = ["rema 1000", "rema1000"]
+afstand_km = 7.5
+zone = "lokal"
+
+[butikker.365discount]
+navn = "365discount"
+tjek_navn = ["365discount", "365 discount"]
+afstand_km = 8.2
+zone = "lokal"
+
+[butikker.spar]
+navn = "SPAR"
+tjek_navn = ["spar"]
+afstand_km = 13.8
+zone = "mellem"
+
+[butikker.meny]
+navn = "MENY"
+tjek_navn = ["meny"]
+afstand_km = 23.3
+zone = "fjern"
+
+[butikker.foetex]
+navn = "føtex"
+tjek_navn = ["føtex", "fotex", "foetex"]
+afstand_km = 25.4
+zone = "fjern"
+
+[butikker.abc]
+navn = "ABC Lavpris"
+tjek_navn = ["abc lavpris"]
+afstand_km = 28.2
+zone = "fjern"
+
+[butikker.bilka]
+navn = "Bilka"
+tjek_navn = ["bilka"]
+afstand_km = 22.6
+zone = "fjern"
+
+[butikker.loevbjerg]
+navn = "Løvbjerg"
+tjek_navn = ["løvbjerg", "lovbjerg"]
+afstand_km = 27.8
+zone = "fjern"
+
+[butikker.kvickly]
+navn = "Kvickly"
+tjek_navn = ["kvickly"]
+afstand_km = 13.8
+zone = "mellem"
