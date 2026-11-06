@@ -228,7 +228,7 @@ function toast(msg, err=false){
   const t = $("#toast"); t.textContent = msg; t.className = "show" + (err ? " err" : "");
   clearTimeout(toastT); toastT = setTimeout(()=> t.className = "", err ? 7000 : 3500);
 }
-async function load(){ S = await api("/api/state"); renderTop(); render(); $("#foot").textContent = `Tilbudsagent ${S.version} · data: ${S.data_mappe}`; }
+async function load(){ S = await api("/api/state"); renderTop(); render(); $("#foot").textContent = `Tilbudsagent ${S.version} · data: ${S.data_mappe}` + (S.dash.raa_antal ? ` · historik: ${S.dash.raa_antal} tilbud gemt siden ${dKort(S.dash.raa_foerst)}` : ""); }
 async function act(fn, ok){ try{ await fn(); if(ok) toast(ok); await load(); }catch(e){ toast(e.message, true); } }
 
 /* zonefarver: de tre nærmeste zoner får serie-farverne, resten grå */
@@ -278,9 +278,14 @@ async function poll(){
   else if(h && h.resultat){
     const r = h.resultat;
     if(r.fejl && !r.nye) showDone("err", `Tjek svarede ikke (${r.fejl} søgninger fejlede)${r.fejltekster?.length ? ": " + r.fejltekster[0] : ""}.`, 0);
-    else showDone("ok", `Færdig: ${r.nye} nye tilbud hentet${r.fejl ? `, ${r.fejl} søgninger fejlede` : ""}.`, 12000);
+    else showDone("ok", `Færdig: ${r.raa_nye ?? r.nye} nye tilbud set, heraf ${r.nye} nye til dine varer${r.fejl ? `, ${r.fejl} søgninger fejlede` : ""}.`, 12000);
   }
 }
+setInterval(async () => {  // fanger automatisk hentning, der starter mens siden er åben
+  if(!S || S.hent?.koerer) return;
+  const h = await api("/api/hent/status").catch(() => null);
+  if(h && h.koerer){ S.hent = h; doneMsg = null; renderTop(); poll(); }
+}, 30000);
 document.addEventListener("click", e => { if(e.target.closest("[data-dismiss]")){ doneMsg = null; renderBanner(); } });
 
 /* ---------- overblik ---------- */
@@ -547,13 +552,15 @@ function indstillingerView(){
     <label class="f">Historik${inp("regler.historik_dage",{suf:"dage"})}<span class="hint">Bruges til normal- og bundpris.</span></label>
     <label class="f">Mistænkelig rabat fra${inp("regler.max_rabat",{scale:100,suf:"%"})}<span class="hint">Højere rabatter bruges ikke. Oftest en forkert pakkestørrelse.</span></label></div></div></section>
 
-  <section class="card"><div class="card-head"><h2>Sikkerhedskopi og flytning</h2><p class="muted small">Gemmer varer, butikker, adresse og regler i én fil. Prishistorikken følger ikke med; den bygges op igen, når du henter tilbud.</p></div>
+  <section class="card"><div class="card-head"><h2>Sikkerhedskopi og flytning</h2><p class="muted small">«Opsætning» er varer, butikker, adresse og regler. «Komplet» tager også alle gemte tilbud med, så prishistorikken kan flyttes til en anden pc. Ved import flettes historikken sammen uden dubletter.</p></div>
     <div class="inl"><a class="btn ghost small" href="/api/eksport" download>Eksportér opsætning</a>
+    <a class="btn ghost small" href="/api/eksport?historik=1" download>Eksportér komplet (med historik)</a>
     <label class="btn ghost small" style="cursor:pointer">Importér opsætning<input type="file" id="imp" accept=".json,application/json" hidden></label>
     <a class="btn ghost small" href="/api/fejlrapport" download>Gem fejlrapport</a></div>
     <p class="small muted" style="margin-top:8px">Fejlrapporten indeholder version, system, varer og seneste log, men ikke din adresse. Send den til den, der har givet dig appen.</p></section>
 
   <section class="card"><div class="card-head"><h2>Tjek og demodata</h2></div><div class="form">
+    <label class="small inl"><input type="checkbox" data-p="app.auto_hent" ${c.app?.auto_hent!==false?"checked":""}> Hent tilbud automatisk, når der er gået over et døgn, mens appen er åben</label>
     <label class="f">API-nøgle til Tjek<span class="hint">Kun hvis hentning afvises uden. Tom = ingen nøgle.</span><input type="password" data-p="tjek.api_key" value="${esc(c.tjek.api_key||"")}" autocomplete="off"></label>
     <div class="inl"><button class="btn ghost small" data-do="demo-on" type="button">Indlæs demodata</button><button class="btn ghost small" data-do="demo-off" type="button">Fjern demodata</button></div></div></section>
 
@@ -593,14 +600,14 @@ document.addEventListener("click", e => {
 document.addEventListener("change", e => {
   if(e.target.id !== "imp" || !e.target.files[0]) return;
   const f = e.target.files[0]; e.target.value = "";
-  if(!confirm("Importere opsætningen fra «" + f.name + "»? Dine nuværende varer, butikker og indstillinger erstattes. Prishistorikken beholdes.")) return;
-  act(async () => { let j; try { j = JSON.parse(await f.text()); } catch(_){ throw new Error("Filen er ikke en gyldig opsætningsfil."); } await api("/api/import", j); draft = null; }, "Opsætning importeret.");
+  if(!confirm("Importere opsætningen fra «" + f.name + "»? Dine nuværende varer, butikker og indstillinger erstattes. Din eksisterende prishistorik beholdes, og historik fra filen flettes ind.")) return;
+  act(async () => { let j; try { j = JSON.parse(await f.text()); } catch(_){ throw new Error("Filen er ikke en gyldig opsætningsfil."); } await api("/api/import", j); draft = null; }, "Importeret.");
 });
 document.addEventListener("keydown", e => { if(e.key === "Enter" && e.target.matches("tr.click")) vareDialog(e.target.dataset.vare); });
 document.addEventListener("input", e => {
   const el = e.target;
   if(el.dataset.f){ filt[el.dataset.f] = el.type === "checkbox" ? el.checked : el.value; if(el.type === "text") { const pos = el.selectionStart; render(); const n = $('[data-f="q"]'); n.focus(); n.setSelectionRange(pos,pos); } else render(); return; }
-  if(el.dataset.p && draft){ let v = el.value; if(el.type === "number") v = v === "" ? null : parseFloat(v) / (+el.dataset.sc || 1); setp(draft, el.dataset.p, v); }
+  if(el.dataset.p && draft){ let v = el.type === "checkbox" ? el.checked : el.value; if(el.type === "number") v = v === "" ? null : parseFloat(v) / (+el.dataset.sc || 1); setp(draft, el.dataset.p, v); }
 });
 document.addEventListener("change", e => {
   const el = e.target;

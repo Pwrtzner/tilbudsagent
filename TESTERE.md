@@ -17,7 +17,9 @@ Gemmes på din egen pc i `%APPDATA%\Tilbudsagent` (databasen `priser.db` og en l
 - opslag af tilbud hos Tjek (med dit lokationsområde),
 - adresseopslag hos OpenStreetMap, når du søger efter din adresse.
 
-Under **Indstillinger → Sikkerhedskopi og flytning** kan du eksportere og importere din opsætning (varer, butikker, adresse, regler) til en anden pc.
+Appen gemmer alle tilbud, den ser, så prishistorikken vokser over tid, og den henter selv nye tilbud, når der er gået over et døgn, mens den er åben (kan slås fra under Indstillinger).
+
+Under **Indstillinger → Sikkerhedskopi og flytning** kan du eksportere og importere din opsætning (varer, butikker, adresse, regler) til en anden pc. «Eksportér komplet» tager også historikken med.
 
 ## Fejl og feedback
 Tryk **Indstillinger → Gem fejlrapport** og send filen til den, der gav dig appen. Den indeholder version, system, varer og seneste log, men ikke din adresse.

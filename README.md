@@ -46,3 +46,10 @@ Henter ugens tilbud fra Tjek (eTilbudsavis), gemmer dem i SQLite og anbefaler, h
 - Pakket app gemmer data i `%APPDATA%\Tilbudsagent`. Kørt som script (`python tilbudsagent.py`) ligger data ved siden af scriptet som før. Miljøvariablen `TILBUDSAGENT_DATA` kan pege et andet sted hen.
 - Uden argumenter starter `tilbudsagent.py` selve appen.
 - Se `TESTERE.md` for en vejledning til testere.
+
+## Historik (v0.5)
+
+- Hvert tilbud, der hentes fra Tjek, gemmes uændret i tabellen `raa` (også tilbud, der ikke passer til dine varer lige nu). Dine varers priser (`obs`) afledes herfra og genopbygges automatisk, når en vare eller en butik rettes, og ved opstart. Nye varer får dermed historik fra de tilbud, der allerede er set.
+- Tilbud fra før v0.5 ligger fortsat i `obs`; `raa` fyldes fra og med første hentning i v0.5.
+- Appen henter selv tilbud, når der er gået over 20 timer siden sidste vellykkede hentning, mens den er åben og adressen er sat (kan slås fra under Indstillinger).
+- Eksportér komplet (`/api/eksport?historik=1`) tager alle gemte tilbud og manuelle priser med. Import flettes uden dubletter.

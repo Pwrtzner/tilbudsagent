@@ -9,6 +9,7 @@ import platform
 import re
 import sys
 import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -105,6 +106,7 @@ def dashboard(cfg, varer, con, idag: date) -> dict:
         varestatus=[dict(id=i["vare"]["id"], norm=i["norm"], kilde=i["kilde"], bund=i["bund"], n=i["n"],
                          obs=obs_pr_vare.get(i["vare"]["id"], 0)) for i in info],
         sidste_hentning=sidste, antal_obs=antal["n"] or 0, demo=bool(antal["d"]),
+        raa_antal=(r := con.execute("SELECT COUNT(*) n, MIN(foerst_set) f FROM raa").fetchone())["n"], raa_foerst=r["f"],
     )
 
 
@@ -164,6 +166,7 @@ def indstillinger_fra_form(b: dict, cfg: dict) -> dict:
     k["stop_kr"] = talfelt(kb.get("stop_kr"), 0, 1000, "Pris pr. butik")
     k["margin_pr_tur_kr"] = talfelt(kb.get("margin_pr_tur_kr", 0), 0, 10000, "Margin pr. tur")
     k["sunk_zoner"] = [str(z) for z in kb.get("sunk_zoner", [])]
+    ny.setdefault("app", {})["auto_hent"] = bool((b.get("app") or {}).get("auto_hent", True))
     r, rb = ny["regler"], b.get("regler", {})
     r["min_rabat"] = talfelt(rb.get("min_rabat"), 0, 0.95, "Mindste rabat")
     r["lager_rabat"] = talfelt(rb.get("lager_rabat"), 0, 0.95, "Rabat for lagerkøb")
@@ -216,6 +219,9 @@ def start_hent() -> dict:
         try:
             cfg, varer = ta.get_cfg(con, APP["config"]), ta.get_varer(con, APP["varer"])
             st["resultat"] = ta.hent(cfg, varer, con, date.today(), fremdrift=st)
+            if st["resultat"]["fejl"] < max(1, st["resultat"].get("kald", 1)):  # mindst ét kald lykkedes
+                con.execute("INSERT OR REPLACE INTO kv(key,value) VALUES('sidste_hent_ts',?)", (datetime.now().isoformat(timespec="seconds"),))
+                con.commit()
         except Exception as e:  # vis fejlen i appen
             st["fejl"] = str(e)
         finally:
@@ -227,13 +233,40 @@ def start_hent() -> dict:
 
 
 # ------------------------------------------------- eksport / import / fejlrapport ---
-def eksport(con, cfg, varer) -> dict:
-    """Hele opsætningen (ikke prishistorikken) som én fil, så den kan flyttes til en anden pc."""
-    return dict(format="tilbudsagent-opsaetning", version=ta.VERSION, eksporteret=datetime.now().isoformat(timespec="seconds"),
-                cfg=cfg, varer=varer)
+def eksport(con, cfg, varer, historik=False) -> dict:
+    """Opsætningen som én fil, så den kan flyttes til en anden pc. Med historik=True følger alle gemte tilbud med."""
+    d = dict(format="tilbudsagent-opsaetning", version=ta.VERSION,
+             eksporteret=datetime.now().isoformat(timespec="seconds"), cfg=cfg, varer=varer)
+    if historik:
+        d["raa"] = [dict(r) for r in con.execute("SELECT * FROM raa")]
+        d["obs_manuel"] = [{k: r[k] for k in r.keys() if k != "id"} for r in con.execute("SELECT * FROM obs WHERE kilde='manuel'")]
+    return d
 
 
-def import_opsaetning(con, b: dict) -> None:
+RAA_KOL = ["tjek_id", "forhandler", "overskrift", "beskrivelse", "pris", "foer_pris", "gyldig_fra", "gyldig_til",
+           "foerst_set", "sidst_set", "soeg", "json"]
+
+
+def flet_historik(con, b: dict) -> tuple[int, int]:
+    """Fletter gemte tilbud ind uden dubletter: første/sidste gang set bevares, intet overskrives."""
+    ny = 0
+    for r in b.get("raa") or []:
+        if not isinstance(r, dict) or not r.get("tjek_id") or not r.get("json"):
+            continue
+        json.loads(r["json"])  # skal være gyldig JSON
+        fandtes = con.execute("SELECT 1 FROM raa WHERE tjek_id=?", (str(r["tjek_id"]),)).fetchone()
+        con.execute("""INSERT INTO raa(%s) VALUES(%s) ON CONFLICT(tjek_id) DO UPDATE SET
+                       foerst_set=MIN(raa.foerst_set, excluded.foerst_set), sidst_set=MAX(raa.sidst_set, excluded.sidst_set)"""
+                    % (",".join(RAA_KOL), ",".join("?" * len(RAA_KOL))), [r.get(k) for k in RAA_KOL])
+        ny += 0 if fandtes else 1
+    manuelle = 0
+    for r in b.get("obs_manuel") or []:
+        if isinstance(r, dict) and r.get("tjek_id") and r.get("vare_id") and r.get("butik"):
+            manuelle += ta.indsaet(con, **r)
+    return ny, manuelle
+
+
+def import_opsaetning(con, b: dict) -> int:
     if b.get("format") != "tilbudsagent-opsaetning":
         raise ValueError("Det er ikke en eksporteret opsætning fra Tilbudsagent.")
     cfg, varer = b.get("cfg"), b.get("varer")
@@ -249,14 +282,21 @@ def import_opsaetning(con, b: dict) -> None:
     for v in varer:
         if not isinstance(v, dict) or not all(k in v for k in ("id", "navn", "enhed", "soeg")) or v["enhed"] not in ("kg", "l", "stk"):
             raise ValueError("En vare i filen er ufuldstændig.")
+    for k in ("raa", "obs_manuel"):
+        if k in b and not isinstance(b[k], list):
+            raise ValueError("Historikken i filen er ugyldig.")
     ta.save_cfg(con, cfg)
     con.execute("DELETE FROM vare")
     for v in varer:
         ta.save_vare(con, v)
     con.execute("INSERT OR REPLACE INTO kv(key,value) VALUES('varer_seedet','1')")
+    ny, man = flet_historik(con, b)
     con.commit()
-    for v in ta.get_varer(con, APP["varer"]):
+    cfg2, v2 = ta.get_cfg(con, APP["config"]), ta.get_varer(con, APP["varer"])
+    for v in v2:
         ta.ryd_obs(con, v)
+    ta.genopbyg(con, cfg2, v2)
+    return ny
 
 
 def fejlrapport(con, cfg, varer) -> str:
@@ -281,6 +321,26 @@ def fejlrapport(con, cfg, varer) -> str:
         json.dumps(c, ensure_ascii=False, indent=1), "", f"Varer: {len(varer)}",
         json.dumps([{k: v.get(k) for k in ("id", "navn", "enhed", "type", "soeg", "maerker", "udeluk")} for v in varer],
                    ensure_ascii=False), "", "Log (seneste linjer):", log or "(tom)"])
+
+
+def auto_hent_loop() -> None:
+    """Henter selv tilbud, hvis der er gået over 20 timer siden sidst, mens appen er åben (og adressen er sat)."""
+    time.sleep(20)
+    while True:
+        try:
+            con = ta.connect(APP["db"])
+            try:
+                cfg = ta.get_cfg(con, APP["config"])
+                sidst = con.execute("SELECT value FROM kv WHERE key='sidste_hent_ts'").fetchone()
+            finally:
+                con.close()
+            gammel = not sidst or (datetime.now() - datetime.fromisoformat(sidst["value"])).total_seconds() > 20 * 3600
+            if cfg["app"].get("auto_hent", True) and gammel and (cfg["tjek"].get("lat") or cfg["tjek"].get("lng")):
+                print("Automatisk hentning af tilbud ...")
+                start_hent()
+        except Exception as e:  # må aldrig vælte appen
+            print(f"Automatisk hentning fejlede: {e}", file=sys.stderr)
+        time.sleep(30 * 60)
 
 
 def meld(tekst: str, titel: str = "Tilbudsagent") -> None:
@@ -337,9 +397,9 @@ class Handler(BaseHTTPRequestHandler):
                                            hent=APP["hent"], version=ta.VERSION, data_mappe=str(ta.DATA)))
                 if u.path == "/api/eksport":
                     dato = date.today().isoformat()
-                    return self._send(200, json.dumps(eksport(con, cfg, varer), ensure_ascii=False, indent=1).encode("utf-8"),
+                    return self._send(200, json.dumps(eksport(con, cfg, varer, u.query == "historik=1"), ensure_ascii=False, indent=None if u.query else 1).encode("utf-8"),
                                       "application/json; charset=utf-8",
-                                      {"Content-Disposition": f'attachment; filename="tilbudsagent-opsaetning-{dato}.json"'})
+                                      {"Content-Disposition": f'attachment; filename="tilbudsagent-{"komplet" if u.query else "opsaetning"}-{dato}.json"'})
                 if u.path == "/api/fejlrapport":
                     return self._send(200, fejlrapport(con, cfg, varer).encode("utf-8"), "text/plain; charset=utf-8",
                                       {"Content-Disposition": 'attachment; filename="tilbudsagent-fejlrapport.txt"'})
@@ -357,7 +417,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"fejl": "Afvist."}, 403)
         try:
             n = int(self.headers.get("Content-Length", 0))
-            if n > 5_000_000:
+            if n > 100_000_000:
                 raise ValueError("For stor forespørgsel.")
             b = json.loads(self.rfile.read(n) or b"{}")
             u = urllib.parse.urlparse(self.path).path
@@ -382,11 +442,14 @@ class Handler(BaseHTTPRequestHandler):
                     v = vare_fra_form(b, varer if not b.get("id") else [])
                     ta.save_vare(con, v)
                     ta.ryd_obs(con, v)  # fjern gemte priser der ikke passer til de nye regler
+                    ta.genopbyg(con, cfg, [v])  # og find tilbud vi allerede har set, som nu passer
                 elif u == "/api/vare/slet":
                     con.execute("DELETE FROM vare WHERE id=?", (str(b.get("id", "")),))
                     con.commit()
                 elif u == "/api/indstillinger":
-                    ta.save_cfg(con, indstillinger_fra_form(b, cfg))
+                    ny = indstillinger_fra_form(b, cfg)
+                    ta.save_cfg(con, ny)
+                    ta.genopbyg(con, ny, varer)  # butiksnavne kan være rettet
                 elif u == "/api/manuel":
                     ta.manuel(cfg, varer, con, SimpleNamespace(
                         butik=b.get("butik"), vare=b.get("vare"),
@@ -395,7 +458,8 @@ class Handler(BaseHTTPRequestHandler):
                         foer=talfelt(b.get("foer"), 0.01, 100000, "Førpris", True),
                         til=(b.get("til") or None)), date.today())
                 elif u == "/api/import":
-                    import_opsaetning(con, b)
+                    self._json(dict(ok=True, nye_tilbud=import_opsaetning(con, b)))
+                    return
                 elif u == "/api/demo":
                     if b.get("paa"):
                         ta.demo(cfg, varer, con, date.today())
@@ -453,6 +517,7 @@ def koer(a) -> None:
     for v in ta.get_varer(con, a.varer):
         ta.ryd_obs(con, v)  # fjerner gamle fejlmatch (matcher kun på overskrift nu)
     migrer(con, cfg)
+    ta.genopbyg(con, ta.get_cfg(con, a.config), ta.get_varer(con, a.varer))  # fra gemte rå tilbud
     con.close()
     url = f"http://localhost:{a.port}/"
     try:
@@ -470,6 +535,7 @@ def koer(a) -> None:
         meld(f"Port {a.port} er optaget af et andet program. Luk det, eller start med --port {a.port + 1}.")
         raise SystemExit(1)
     APP["server"] = srv
+    threading.Thread(target=auto_hent_loop, daemon=True).start()
     print(f"Tilbudsagent {ta.VERSION} kører på {url}  (Ctrl+C eller knappen Afslut for at stoppe)")
     print(f"Data: {ta.DATA}")
     if not a.ingen_browser:
