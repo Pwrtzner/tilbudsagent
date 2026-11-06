@@ -135,24 +135,43 @@ def _gammel(r: dict, idag: date) -> bool:
     return alder > (CACHE_DAGE if r["km"] is not None else MANGLER_DAGE)
 
 
+def mangler_afstande(con, butikker: dict, lat: float, lng: float, idag: date | None = None) -> int:
+    """Hvor mange kæder mangler en (frisk) afstand for dette sted?"""
+    idag = idag or date.today()
+    cache = hent_cache(con, lat, lng)
+    return sum(1 for b in butikker if b not in cache or _gammel(cache[b], idag))
+
+
+def _trin(fr, nr: int, tekst: str) -> None:
+    if fr is not None:
+        fr["trin"], fr["trin_tekst"] = nr, tekst
+
+
 def find_afstande(con, butikker: dict, lat: float, lng: float, max_km: float = 60.0, tving: bool = False,
-                  idag: date | None = None) -> dict:
+                  idag: date | None = None, fremdrift: dict | None = None) -> dict:
     """Sørger for at der er en afstand til (nærmeste butik i) hver kæde. Slår kun op for det, der mangler."""
     idag = idag or date.today()
     cache = hent_cache(con, lat, lng)
     mangler = {b: v for b, v in butikker.items() if tving or b not in cache or _gammel(cache[b], idag)}
+    if fremdrift is not None:
+        fremdrift.update(i_alt=len(butikker), opslag=len(mangler))
     if mangler:
+        _trin(fremdrift, 1, "Søger efter dine butikker i OpenStreetMap-data")
         try:
             svar = _post(OVERPASS, {"data": overpass_forespoergsel(lat, lng, max_km * 1000, mangler)})
         except Exception as e:
             raise RuntimeError(f"Kunne ikke hente butikker fra OpenStreetMap: {e}") from e
         kand = kandidater(svar.get("elements") or [], mangler, lat, lng)
         punkter = [(k[3], k[4]) for bid in kand for k in kand[bid]]
+        if fremdrift is not None:
+            fremdrift["kandidater"] = len(punkter)
+        _trin(fremdrift, 2, f"Beregner kørselsafstand til {len(punkter)} mulige butikker")
         try:
             veje = vejafstande_km(lat, lng, punkter)
             metode = "vej"
         except Exception:
             veje, metode = [None] * len(punkter), "luftlinje"
+        _trin(fremdrift, 3, "Vælger den nærmeste butik i hver kæde og gemmer")
         i = 0
         for bid, lst in kand.items():
             bedste = None
@@ -171,6 +190,8 @@ def find_afstande(con, butikker: dict, lat: float, lng: float, max_km: float = 6
             con.execute("INSERT OR REPLACE INTO afstand(pos,butik,km,navn,adresse,lat,lng,metode,hentet) "
                         "VALUES(?,?,?,?,?,?,?,?,?)", row)
         con.commit()
+    else:
+        _trin(fremdrift, 3, "Alt var allerede gemt for dette sted")
     return hent_cache(con, lat, lng)
 
 

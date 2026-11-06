@@ -24,7 +24,7 @@ import tilbudsagent as ta
 
 HERE = ta.RES  # app.html, config.toml og varer.csv ligger her (i .exe: i den udpakkede pakke)
 APP = {"db": ta.DATA / "priser.db", "config": HERE / "config.toml", "varer": HERE / "varer.csv",
-       "hent": {"koerer": False}, "server": None}
+       "hent": {"koerer": False}, "find": {"koerer": False}, "server": None}
 LOCK = threading.Lock()
 
 
@@ -342,6 +342,61 @@ def fejlrapport(con, cfg, varer) -> str:
                    ensure_ascii=False), "", "Log (seneste linjer):", log or "(tom)"])
 
 
+def hjem_flyttet(gammel: dict, ny: dict) -> tuple[dict, bool]:
+    """Er hjemmeadressen flyttet (>0,5 km)? Så hørte de indtastede afstande til det gamle sted: skift til automatiske."""
+    g, n = gammel["tjek"], ny["tjek"]
+    har_ny = bool(n.get("lat") or n.get("lng"))
+    flyttet = har_ny and ((not (g.get("lat") or g.get("lng"))) or
+                          geo.luftlinje_km(g["lat"], g["lng"], n["lat"], n["lng"]) > 0.5)
+    if flyttet:
+        ny["koersel"]["auto_afstand"] = True
+        for b in ny["butikker"].values():
+            b.pop("fast_afstand", None)
+    return ny, bool(flyttet)
+
+
+def saet_hjem(cfg: dict, adresse: str, lat, lng) -> tuple[dict, bool]:
+    ny = json.loads(json.dumps(cfg))
+    ny["adresse"] = adresse.strip()[:200]
+    ny["tjek"]["lat"] = talfelt(lat, -90, 90, "Breddegrad")
+    ny["tjek"]["lng"] = talfelt(lng, -180, 180, "Længdegrad")
+    return hjem_flyttet(cfg, ny)
+
+
+def start_find(opg: dict) -> dict:
+    """Find nærmeste butikker i baggrunden; fremdriften hentes via /api/find/status."""
+    st = APP["find"]
+    with LOCK:
+        if st.get("koerer"):
+            raise ValueError("Der søges allerede efter butikker. Vent et øjeblik.")
+        st.clear()
+        st.update(koerer=True, navn=opg.get("navn"), trin=0, trin_tekst="Starter", start=time.time(), flyttet=bool(opg.get("flyttet")))
+
+    def job():
+        con = ta.connect(APP["db"])
+        try:
+            cfg = ta.get_cfg(con, APP["config"])
+            rows = geo.find_afstande(con, cfg["butikker"], opg["lat"], opg["lng"], tving=bool(opg.get("tving")), fremdrift=st)
+            fundet = [bid for bid in cfg["butikker"] if rows.get(bid, {}).get("km") is not None]
+            if opg.get("gem_position") and not fundet:
+                raise RuntimeError("Der blev ikke fundet nogen af dine butikker inden for 60 km af det sted.")
+            if opg.get("gem_position"):
+                geo.gem_position(con, opg["navn"], opg["lat"], opg["lng"], bool(opg.get("sunk", True)))
+            st["resultat"] = dict(
+                sted=opg["navn"], fundet=len(fundet), i_alt=len(cfg["butikker"]),
+                mangler=[b["navn"] for bid, b in cfg["butikker"].items() if bid not in fundet],
+                luftlinje=[cfg["butikker"][bid]["navn"] for bid in fundet if rows[bid]["metode"] == "luftlinje"],
+                position=bool(opg.get("gem_position")))
+        except Exception as e:
+            st["fejl"] = str(e)
+        finally:
+            st["koerer"] = False
+            st["sek"] = round(time.time() - st["start"])
+            con.close()
+    threading.Thread(target=job, daemon=True).start()
+    return st
+
+
 def auto_hent_loop() -> None:
     """Henter selv tilbud, hvis der er gået over 20 timer siden sidst, mens appen er åben (og adressen er sat)."""
     time.sleep(20)
@@ -406,6 +461,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, (HERE / "app.html").read_bytes(), "text/html; charset=utf-8")
             if u.path == "/api/hent/status":
                 return self._json(APP["hent"])
+            if u.path == "/api/find/status":
+                return self._json(APP["find"])
             if u.path == "/api/ping":
                 return self._json(dict(app="tilbudsagent", version=ta.VERSION))
             con = ta.connect(APP["db"])
@@ -421,7 +478,7 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(dict(cfg=cfg, varer=varer, dash=dashboard(ceff, varer, con, date.today()),
                                            position=ceff["_position"], seneste_positioner=json.loads(sen["value"]) if sen else [],
                                            eff_butikker=eff, zoner_eff=sorted({b["zone"] for b in ceff["butikker"].values()}),
-                                           hent=APP["hent"], version=ta.VERSION, data_mappe=str(ta.DATA),
+                                           hent=APP["hent"], find=APP["find"], version=ta.VERSION, data_mappe=str(ta.DATA),
                                            db_mb=round(APP["db"].stat().st_size / 1e6, 1)))
                 if u.path == "/api/eksport":
                     dato = date.today().isoformat()
@@ -476,33 +533,39 @@ class Handler(BaseHTTPRequestHandler):
                     con.commit()
                 elif u == "/api/indstillinger":
                     ny = indstillinger_fra_form(b, cfg)
+                    ny, flyttet = hjem_flyttet(cfg, ny)
                     ta.save_cfg(con, ny)
                     ta.genopbyg(con, ny, varer)  # butiksnavne kan være rettet
-                    if ny["koersel"].get("auto_afstand") and (ny["tjek"].get("lat") or ny["tjek"].get("lng")):
-                        try:  # slår kun op for det, der mangler (nye butikker, ændret adresse)
-                            geo.find_afstande(con, ny["butikker"], ny["tjek"]["lat"], ny["tjek"]["lng"])
-                        except RuntimeError as e:
-                            raise ValueError(f"Indstillingerne er gemt, men afstande kunne ikke findes automatisk: {e}")
-                elif u == "/api/position":
-                    lat, lng = talfelt(b.get("lat"), -90, 90, "Breddegrad"), talfelt(b.get("lng"), -180, 180, "Længdegrad")
-                    navn = str(b.get("navn") or "").strip()[:200] or "Anden position"
-                    try:
-                        rows = geo.find_afstande(con, cfg["butikker"], lat, lng)
-                    except RuntimeError as e:
-                        raise ValueError(str(e))
-                    if not any(r["km"] is not None for r in rows.values()):
-                        raise ValueError("Der blev ikke fundet nogen af dine butikker inden for 60 km af det sted.")
-                    geo.gem_position(con, navn, lat, lng, bool(b.get("sunk", True)))
+                    har_pos = bool(ny["tjek"].get("lat") or ny["tjek"].get("lng"))
+                    if flyttet or (har_pos and ny["koersel"].get("auto_afstand")
+                                   and geo.mangler_afstande(con, ny["butikker"], ny["tjek"]["lat"], ny["tjek"]["lng"])):
+                        # slår kun op for det, der mangler (nye butikker, ændret adresse)
+                        start_find(dict(lat=ny["tjek"]["lat"], lng=ny["tjek"]["lng"], navn=ny["adresse"] or "Hjem", flyttet=flyttet))
+                        self._json(dict(ok=True, find=True, flyttet=flyttet))
+                        return
                 elif u == "/api/position/hjem":
                     geo.ryd_position(con)
-                elif u == "/api/afstande":
-                    pos = geo.aktiv_position(con, cfg)
-                    if not (pos["lat"] or pos["lng"]):
-                        raise ValueError("Sæt din adresse under Indstillinger først.")
-                    try:
-                        geo.find_afstande(con, cfg["butikker"], pos["lat"], pos["lng"], tving=bool(b.get("tving")))
-                    except RuntimeError as e:
-                        raise ValueError(str(e))
+                elif u == "/api/find":
+                    kind = b.get("type")
+                    if kind == "position":
+                        lat, lng = talfelt(b.get("lat"), -90, 90, "Breddegrad"), talfelt(b.get("lng"), -180, 180, "Længdegrad")
+                        start_find(dict(lat=lat, lng=lng, navn=str(b.get("navn") or "").strip()[:200] or "Anden position",
+                                        gem_position=True, sunk=bool(b.get("sunk", True))))
+                    else:
+                        pos = geo.aktiv_position(con, cfg)
+                        if kind == "hjem":
+                            t = cfg["tjek"]
+                            pos = dict(navn=cfg.get("adresse") or "Hjem", lat=t.get("lat") or 0.0, lng=t.get("lng") or 0.0)
+                        if not (pos["lat"] or pos["lng"]):
+                            raise ValueError("Sæt din hjemmeadresse først.")
+                        start_find(dict(lat=pos["lat"], lng=pos["lng"], navn=pos["navn"], tving=bool(b.get("tving"))))
+                elif u == "/api/hjem":
+                    ny, flyttet = saet_hjem(cfg, str(b.get("adresse") or ""), b.get("lat"), b.get("lng"))
+                    ta.save_cfg(con, ny)
+                    if flyttet:
+                        start_find(dict(lat=ny["tjek"]["lat"], lng=ny["tjek"]["lng"], navn=ny["adresse"], flyttet=True))
+                    self._json(dict(ok=True, find=flyttet, cfg=ny))
+                    return
                 elif u == "/api/manuel":
                     ta.manuel(cfg, varer, con, SimpleNamespace(
                         butik=b.get("butik"), vare=b.get("vare"),

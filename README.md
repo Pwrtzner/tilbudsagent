@@ -62,3 +62,10 @@ Henter ugens tilbud fra Tjek (eTilbudsavis), gemmer dem i SQLite og anbefaler, h
 - **Kilder:** butikker fra OpenStreetMap (Overpass), kørselsafstand fra OSRM's gratis demoserver; kan vejafstand ikke hentes, bruges luftlinje × 1,3 (markeret «ca.»). Begge er delte, gratis tjenester: appen spørger kun, når noget mangler.
 - Ligger det andet sted langt fra hjem, henter «Hent tilbud» også tilbud omkring det sted.
 - Databasen: rå tilbud gemmes slanke (kun brugte felter), og tilbud der sidst er set for over 730 dage siden slettes (`regler.raa_dage`). Dine afledte priser bevares. Databasestørrelsen vises nederst i appen.
+
+### v0.6.1
+
+- Hjemmeadressen har sit eget kort i Indstillinger med knappen «Brug som hjemmeadresse», så den ikke afhænger af «Gem indstillinger» nederst.
+- Flyttes hjemmeadressen mere end 0,5 km, skifter appen til automatiske afstande (de indtastede hørte til det gamle sted) og finder butikkerne med det samme.
+- Butikstabellen viser én afstand pr. butik: den fundne (med adresse) eller den indtastede. «Indtast selv» låser en bestemt butik til din egen afstand.
+- Butiksopslaget kører i baggrunden og viser fremdrift i tre trin, resultat og hvilke kæder der ikke blev fundet.
