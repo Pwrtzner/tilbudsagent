@@ -213,7 +213,7 @@ const dKort = iso => iso ? new Date(iso.slice(0,10)+"T12:00").toLocaleDateString
 const dLang = iso => new Date(iso+"T12:00").toLocaleDateString("da-DK",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
 const TABS = [["overblik","Overblik"],["tilbud","Tilbud"],["varer","Varer"],["indstillinger","Indstillinger"]];
 
-let S = null, tab = "overblik", chartVare = null, filt = {vare:"",butik:"",tur:false,q:""}, draft = null, tblView = false, lastHist = null;
+let S = null, tab = "overblik", chartVare = null, filt = {vare:"",butik:"",tur:false,q:"",sort:"rabat"}, draft = null, tblView = false, lastHist = null;
 
 async function api(path, body){
   const opt = body === undefined ? {} : {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)};
@@ -410,21 +410,35 @@ function drawChart(){
 new ResizeObserver(() => { if(tab === "overblik" && lastHist) drawChart(); }).observe(document.body);
 
 /* ---------- tilbud ---------- */
+function gaelder(t){
+  const dag = x => x ? Math.round((new Date(x + "T00:00:00") - new Date(new Date().toDateString())) / 864e5) : null;
+  const fra = dag(t.fra), til = dag(t.til);
+  let rest = "";
+  if(fra != null && fra > 0) rest = `<span class="badge">starter ${fra === 1 ? "i morgen" : "om " + fra + " dage"}</span>`;
+  else if(til == null) rest = "";
+  else if(til < 0) rest = `<span class="badge warn">udløbet</span>`;
+  else if(til === 0) rest = `<span class="badge warn">udløber i dag</span>`;
+  else if(til === 1) rest = `<span class="badge warn">udløber i morgen</span>`;
+  else rest = `<span class="muted small">${til} dage tilbage</span>`;
+  return `${t.fra ? dKort(t.fra) : "?"} – ${t.til ? dKort(t.til) : "?"}<br>${rest}`;
+}
 function tilbudView(){
   const d = S.dash;
   const rows = d.tilbud.filter(t => (!filt.vare || t.vare_id === filt.vare) && (!filt.butik || t.butik === filt.butik)
     && (!filt.tur || t.i_tur) && (!filt.q || (t.tekst + " " + t.vare).toLowerCase().includes(filt.q.toLowerCase())))
-    .sort((a,b) => (b.rabat ?? -1) - (a.rabat ?? -1));
+    .sort(filt.sort === "udloeb" ? (a,b) => (a.til || "9999").localeCompare(b.til || "9999") || (b.rabat ?? -1) - (a.rabat ?? -1)
+                                 : (a,b) => (b.rabat ?? -1) - (a.rabat ?? -1));
   const vOpt = `<option value="">Alle varer</option>` + S.varer.map(v=>`<option value="${esc(v.id)}" ${filt.vare===v.id?"selected":""}>${esc(v.navn)}</option>`).join("");
   const bOpt = `<option value="">Alle butikker</option>` + Object.entries(S.cfg.butikker).map(([id,b])=>`<option value="${esc(id)}" ${filt.butik===id?"selected":""}>${esc(b.navn)}</option>`).join("");
   return `<section class="card"><div class="card-head"><h2>Aktive tilbud</h2><button class="btn ghost small" data-do="manuel">Indtast tilbud manuelt</button></div>
     <div class="filters"><label class="f small">Vare<select data-f="vare">${vOpt}</select></label><label class="f small">Butik<select data-f="butik">${bOpt}</select></label>
       <label class="f small">Søg i tilbudstekst<input type="text" data-f="q" value="${esc(filt.q)}"></label>
+      <label class="f small">Sorter efter<select data-f="sort"><option value="rabat" ${filt.sort==="rabat"?"selected":""}>Størst rabat</option><option value="udloeb" ${filt.sort==="udloeb"?"selected":""}>Udløber først</option></select></label>
       <label class="small inl"><input type="checkbox" data-f="tur" ${filt.tur?"checked":""}> Kun tilbud i ugens tur</label></div>
     ${rows.length ? `<div class="tablewrap"><table><thead><tr><th>Vare</th><th>Butik</th><th>Tilbud</th><th class="num">Pris</th><th class="num">Enhedspris</th><th class="num">Rabat</th><th>Gælder</th><th></th></tr></thead><tbody>
       ${rows.map(t=>`<tr><td>${esc(t.vare)}</td><td>${zdot(t.zone)} ${esc(t.butik_navn)}</td><td>${esc(t.tekst)}</td><td class="num">${kr(t.pris)}</td>
         <td class="num">${t.ep ? kr(t.ep)+" kr/"+t.enhed : '<span class="badge warn">ukendt</span>'}</td><td class="num">${t.rabat!=null ? pct(t.rabat) : "–"}</td>
-        <td>${dKort(t.fra)} – ${dKort(t.til)}</td><td>${t.i_tur?'<span class="badge in">i turen</span> ':""}${t.mistaenkelig?'<span class="badge warn" title="Rabatten er højere end grænsen i Indstillinger. Det er oftest en forkert pakkestørrelse.">urealistisk rabat – ikke brugt</span> ':""}${t.betingelse?`<span class="badge warn">${esc(t.betingelse)}</span>`:""}${t.kilde==="manuel"?' <span class="badge">manuel</span>':""}</td></tr>`).join("")}
+        <td>${gaelder(t)}</td><td>${t.i_tur?'<span class="badge in">i turen</span> ':""}${t.mistaenkelig?'<span class="badge warn" title="Rabatten er højere end grænsen i Indstillinger. Det er oftest en forkert pakkestørrelse.">urealistisk rabat – ikke brugt</span> ':""}${t.betingelse?`<span class="badge warn">${esc(t.betingelse)}</span>`:""}${t.kilde==="manuel"?' <span class="badge">manuel</span>':""}</td></tr>`).join("")}
       </tbody></table></div>` : `<p class="empty">Ingen tilbud matcher. ${d.antal_obs ? "Prøv at fjerne et filter." : "Tryk på Hent tilbud øverst."}</p>`}
     ${d.uafklaret.length ? `<p class="small muted" style="margin-top:12px">${d.uafklaret.length} tilbud mangler pakkestørrelse, så enhedsprisen kunne ikke regnes ud. De tæller ikke med i turen.</p>` : ""}</section>`;
 }
@@ -590,7 +604,7 @@ document.addEventListener("input", e => {
 });
 document.addEventListener("change", e => {
   const el = e.target;
-  if(el.dataset.f === "vare" || el.dataset.f === "butik" || el.dataset.f === "tur"){ filt[el.dataset.f] = el.type === "checkbox" ? el.checked : el.value; render(); }
+  if(["vare","butik","tur","sort"].includes(el.dataset.f)){ filt[el.dataset.f] = el.type === "checkbox" ? el.checked : el.value; render(); }
   if(el.dataset.sunk && draft){ const s = new Set(draft.koersel.sunk_zoner); el.checked ? s.add(el.dataset.sunk) : s.delete(el.dataset.sunk); draft.koersel.sunk_zoner = [...s]; }
   if(el.dataset.zone && draft){ render(); }
 });
