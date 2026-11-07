@@ -116,14 +116,18 @@ def ret_liste(con, cfg, varer) -> list[dict]:
     """Dine rettelser og skjulte tilbud, til oversigten og til «fortryd»."""
     navne = {v["id"]: v["navn"] for v in varer}
     ud = []
+    idag = date.today().isoformat()
     for r in con.execute("SELECT * FROM ret ORDER BY id DESC").fetchall():
+        udl = ta.ret_udloeb(r)
+        if udl and udl < idag:
+            continue  # udløbet sammen med tilbuddet; de rettede priser ligger stadig i historikken
         orig = json.loads(r["orig"])
         ny = ta.anvend_ret(dict(orig, ret_id=None), dict(r), True)
         ud.append(dict(
             id=r["id"], vare_id=r["vare_id"], vare=navne.get(r["vare_id"], r["vare_id"]), butik=r["butik"],
             butik_navn=cfg["butikker"].get(r["butik"], {}).get("navn", r["butik"]), tjek_id=r["tjek_id"],
             handling=r["handling"], tekst=orig.get("overskrift"), enhed=orig.get("enhed"), note=r["note"], oprettet=r["oprettet"],
-            gentages=bool(r["moenster"]), tjek_pris=orig.get("pris"), tjek_ep=orig.get("enhedspris"),
+            udloeb=udl, gentages=bool(r["moenster"]), tjek_pris=orig.get("pris"), tjek_ep=orig.get("enhedspris"),
             ny_pris=ny["pris"] if ny else None, ny_ep=ny["enhedspris"] if ny else None,
             antal=con.execute("SELECT COUNT(*) n FROM obs WHERE ret_id=?", (r["id"],)).fetchone()["n"]))
     return ud

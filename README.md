@@ -80,6 +80,10 @@ Henter ugens tilbud fra Tjek (eTilbudsavis), gemmer dem i SQLite og anbefaler, h
 - **Signering:** APK'en signeres med en fast nøgle fra GitHub-hemmelighederne `KEYSTORE_BASE64` og `KEYSTORE_KODE`. Samme nøgle skal bruges hver gang; ellers kan telefonen ikke opdatere appen, kun geninstallere den.
 - Kræver Android 10 eller nyere. Baggrundshentning er ikke pålidelig på Android: appen henter, når den åbnes og der er gået over et døgn.
 
+### v0.8.1
+
+- **Rettelser udløber.** En rettelse gælder til tilbuddets sidste dag og forsvinder så fra listen «Rettelser og skjulte tilbud». En helt ny tilbudsavis, der starter efter udløbet, får ikke rettelsen, selv om tilbuddet ligner. De rettede priser bliver i prishistorikken.
+
 ### v0.8.0 – ret forkerte priser
 
 - **Ret en pris, der ikke stemmer med avisen.** Tryk «Ret» ved et tilbud (under Tilbud eller i Ugens tur): ændr pris, mængde, førpris, enhedspris, datoer eller betingelse, eller vælg «Skjul tilbuddet». Appen viser, hvad Tjek sagde, og regner enhedspris med live.

@@ -581,9 +581,9 @@ function rettelserView(){
   const l = S.dash.rettelser || []; if(!l.length) return "";
   const ep = (x, e) => x != null ? `${kr(x)} kr/${e}` : "ukendt";
   return `<section class="card"><div class="card-head"><h2>Rettelser og skjulte tilbud (${l.length})</h2>
-    <p class="muted small">Gemmes for sig og følger med, når du flytter din opsætning til en anden enhed. «Fortryd» sætter tilbuddet tilbage til det, Tjek sagde.</p></div>
+    <p class="muted small">En rettelse gælder, til tilbuddets periode udløber, og forsvinder så fra listen. En helt ny tilbudsavis får den ikke. «Fortryd» sætter tilbuddet tilbage til det, Tjek sagde.</p></div>
     <div class="tablewrap"><table><thead><tr><th>Vare</th><th>Butik</th><th>Tilbud</th><th>Tjek sagde</th><th>Nu</th><th>Note</th><th></th></tr></thead><tbody>
-    ${l.map(r => `<tr><td>${esc(r.vare)}</td><td>${esc(r.butik_navn)}</td><td>${esc(r.tekst)}${r.gentages ? ' <span class="badge" title="Samme tilbud rettes også, når det udgives igen.">gentages</span>' : ""}</td>
+    ${l.map(r => `<tr><td>${esc(r.vare)}</td><td>${esc(r.butik_navn)}</td><td>${esc(r.tekst)}${r.gentages ? ' <span class="badge" title="Samme tilbud rettes også, når det udgives igen, så længe perioden varer.">gentages</span>' : ""}${r.udloeb ? ` <span class="small muted">udløber ${new Date(r.udloeb + "T00:00:00").toLocaleDateString("da-DK", {day:"numeric", month:"short"})}</span>` : ""}</td>
       <td class="num">${r.tjek_pris != null ? kr(r.tjek_pris) + " kr" : "–"}<br><span class="small muted">${ep(r.tjek_ep, r.enhed)}</span></td>
       <td class="num">${r.handling === "skjul" ? '<span class="badge warn">skjult</span>' : kr(r.ny_pris) + " kr<br><span class=\"small muted\">" + ep(r.ny_ep, r.enhed) + "</span>"}</td>
       <td class="small">${esc(r.note || "")}</td>
@@ -665,7 +665,7 @@ async function retDialog(vare, butik, tid){
       <label class="f">Gælder til<input type="date" id="r-til" value="${esc(nu.gyldig_til || "")}"></label></div>
     <label class="f">Betingelse<input type="text" id="r-bet" maxlength="120" value="${esc(nu.betingelse || "")}"><span class="hint">Fx «kræver Plus-kort» eller «min. 2 stk». Tom = ingen.</span></label>
     <label class="f">Note til dig selv<input type="text" id="r-note" maxlength="300" value="${esc(r ? r.note || "" : "")}" placeholder="Fx: tilbudsavis uge 45, side 3"></label>
-    <label class="inl small"><input type="checkbox" id="r-gentag" ${!r || r.moenster ? "checked" : ""}> Ret også, når samme tilbud udgives igen (samme butik, tekst og Tjek-pris). Datoer rettes kun her.</label>
+    <label class="inl small"><input type="checkbox" id="r-gentag" ${!r || r.moenster ? "checked" : ""}> Ret også, når samme tilbud udgives igen i samme periode (samme butik, tekst og Tjek-pris). Rettelsen udløber med tilbuddet. Datoer rettes kun her.</label>
     <div class="dlg-actions"><div>${d.nu ? `<button type="button" class="btn ghost" id="r-skjul">Skjul tilbuddet</button> ` : ""}${r ? `<button type="button" class="btn danger" id="r-fortryd">Fortryd rettelse</button>` : ""}</div>
       <div class="right"><button type="button" class="btn ghost" id="r-annuller">Annuller</button><button class="btn" id="r-gem">Gem rettelse</button></div></div>`;
   let epRoert = false;

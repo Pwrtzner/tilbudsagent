@@ -40,7 +40,7 @@ try:
 except ModuleNotFoundError:  # Python 3.10: pip install tomli
     import tomli as tomllib
 
-VERSION = "0.8.0"
+VERSION = "0.8.1"
 FROSSET = getattr(sys, "frozen", False)  # True når appen er pakket som .exe
 # RES: hvor startværdier og app.html ligger. DATA: hvor brugerens database og log gemmes.
 RES = Path(os.environ.get("TILBUDSAGENT_RES") or getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
@@ -352,18 +352,33 @@ def hent_ret(con) -> dict:
     ix = {}
     for r in con.execute("SELECT * FROM ret ORDER BY id"):
         d = dict(r)
+        d["udloeb"] = ret_udloeb(d)
         ix[(d["vare_id"], d["butik"], d["tjek_id"])] = d
         if d["moenster"]:
             ix[(d["vare_id"], d["moenster"])] = d
     return ix
 
 
-def ret_for(ix, vare_id, butik, tjek_id, overskrift, tjek_pris):
+def ret_udloeb(r) -> str | None:
+    """Dagen en rettelse udløber: tilbuddets sidste dag (som du har rettet den, ellers som Tjek sagde)."""
+    if r["gyldig_til"]:
+        return r["gyldig_til"]
+    try:
+        return json.loads(r["orig"]).get("gyldig_til")
+    except (TypeError, ValueError):
+        return None
+
+
+def ret_for(ix, vare_id, butik, tjek_id, overskrift, tjek_pris, fra=None):
+    """Rettelsen for et tilbud. Gengangere (nyt id, samme tilbud) rettes kun, hvis de begynder, før rettelsen
+    udløber – en helt ny tilbudsavis bagefter får ikke rettelsen."""
     if not ix:
         return None
     r = ix.get((vare_id, butik, tjek_id))
     if r is None and tjek_pris is not None:
         r = ix.get((vare_id, moenster(butik, overskrift, tjek_pris)))
+        if r is not None and fra and r.get("udloeb") and fra > r["udloeb"]:
+            return None
     return r
 
 
@@ -412,8 +427,11 @@ def anvend_ret_paa_obs(con, r: dict) -> int:
         indsaet(con, **ny)
         n += 1
     if r["moenster"]:
+        ud = ret_udloeb(r)
         for s in con.execute("SELECT * FROM obs WHERE vare_id=? AND butik=? AND tjek_id!=? AND ret_id IS NULL AND kilde='tjek'",
                              (r["vare_id"], r["butik"], r["tjek_id"])).fetchall():
+            if ud and s["gyldig_fra"] and s["gyldig_fra"] > ud:
+                continue  # begynder efter rettelsen udløb: ny tilbudsavis
             if s["pris"] is not None and moenster(s["butik"], s["overskrift"], s["pris"]) == r["moenster"]:
                 _skriv_obs(con, s["id"], anvend_ret(dict(s), r, False), dict(s))
                 n += 1
@@ -523,7 +541,7 @@ def obs_fra_tilbud(cfg, v, o, hentet, ret=None):
         gyldig_fra=(o.get("run_from") or "")[:10] or None, gyldig_til=(o.get("run_till") or "")[:10] or None,
         betingelse=betingelse(f"{o.get('heading', '')} {o.get('description', '')}"), kilde="tjek",
         tjek_id=str(o.get("id")))
-    r = ret_for(ret, v["id"], butik, k["tjek_id"], k["overskrift"], pris)
+    r = ret_for(ret, v["id"], butik, k["tjek_id"], k["overskrift"], pris, k["gyldig_fra"])
     return anvend_ret(k, r, r["tjek_id"] == k["tjek_id"]) if r else k
 
 
