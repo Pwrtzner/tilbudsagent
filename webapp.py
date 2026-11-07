@@ -68,7 +68,7 @@ def dashboard(cfg, varer, con, idag: date) -> dict:
         return dict(vare_id=c["vare"]["id"], vare=c["vare"]["navn"], enhed=c["vare"]["enhed"], tekst=c["tekst"],
                     pris=c["pris"], ep=c["ep"], ref=c["ref"], rabat=c["rabat"], maengde=c["maengde"],
                     besparelse=c["besparelse"], lager=c["lager"], betingelse=c["betingelse"],
-                    fra=c["fra"], til=c["til"])
+                    fra=c["fra"], til=c["til"], butik=c["butik"], tjek_id=c["tjek_id"], rettet=c["rettet"])
 
     tur_butikker = [dict(id=s, navn=B[s]["navn"], km=B[s]["afstand_km"], zone=B[s]["zone"],
                          linjer=[linje(c) for c in sorted(bedst["valg"][s], key=lambda c: -c["besparelse"])])
@@ -89,6 +89,7 @@ def dashboard(cfg, varer, con, idag: date) -> dict:
                 zone=B[o["butik"]]["zone"], tekst=o["overskrift"], pris=o["pris"], ep=ep,
                 rabat=(1 - ep / ref) if ep and ref else None, fra=o["gyldig_fra"], til=o["gyldig_til"],
                 betingelse=o["betingelse"], kilde=o["kilde"], i_tur=(v["id"], o["butik"]) in i_tur,
+                tjek_id=o["tjek_id"], rettet=bool(o.get("ret_id")),
                 mistaenkelig=bool(ep and ref and 1 - ep / ref > cfg["regler"].get("max_rabat", 0.6))))
 
     lager = [dict(linje(c), butik_navn=B[c["butik"]]["navn"]) for cs in kands.values() for c in cs if c["lager"]]
@@ -101,7 +102,7 @@ def dashboard(cfg, varer, con, idag: date) -> dict:
                  koersel=[dict(l) for l in kl], koersel_i_alt=sum(l["kr"] for l in kl)),
         afviste=[dict(zone=a["zone"], butikker=[B[s]["navn"] for s in a["butikker"]],
                       ekstra_sav=a["ekstra_sav"], ekstra_cost=a["ekstra_cost"]) for a in afviste],
-        lager=lager, tilbud=tilbud,
+        lager=lager, tilbud=tilbud, rettelser=ret_liste(con, cfg, varer),
         uafklaret=[dict(vare=o["vare"]["navn"], butik=B.get(o["butik"], {}).get("navn", o["butik"]),
                         tekst=o["overskrift"], pris=o["pris"]) for o in uafklaret[:8]],
         varestatus=[dict(id=i["vare"]["id"], norm=i["norm"], kilde=i["kilde"], bund=i["bund"], n=i["n"],
@@ -109,6 +110,57 @@ def dashboard(cfg, varer, con, idag: date) -> dict:
         sidste_hentning=sidste, antal_obs=antal["n"] or 0, demo=bool(antal["d"]),
         raa_antal=(r := con.execute("SELECT COUNT(*) n, MIN(foerst_set) f FROM raa").fetchone())["n"], raa_foerst=r["f"],
     )
+
+
+def ret_liste(con, cfg, varer) -> list[dict]:
+    """Dine rettelser og skjulte tilbud, til oversigten og til «fortryd»."""
+    navne = {v["id"]: v["navn"] for v in varer}
+    ud = []
+    for r in con.execute("SELECT * FROM ret ORDER BY id DESC").fetchall():
+        orig = json.loads(r["orig"])
+        ny = ta.anvend_ret(dict(orig, ret_id=None), dict(r), True)
+        ud.append(dict(
+            id=r["id"], vare_id=r["vare_id"], vare=navne.get(r["vare_id"], r["vare_id"]), butik=r["butik"],
+            butik_navn=cfg["butikker"].get(r["butik"], {}).get("navn", r["butik"]), tjek_id=r["tjek_id"],
+            handling=r["handling"], tekst=orig.get("overskrift"), enhed=orig.get("enhed"), note=r["note"], oprettet=r["oprettet"],
+            gentages=bool(r["moenster"]), tjek_pris=orig.get("pris"), tjek_ep=orig.get("enhedspris"),
+            ny_pris=ny["pris"] if ny else None, ny_ep=ny["enhedspris"] if ny else None,
+            antal=con.execute("SELECT COUNT(*) n FROM obs WHERE ret_id=?", (r["id"],)).fetchone()["n"]))
+    return ud
+
+
+def _maengde_tekst(o: dict) -> str:
+    q = o.get("quantity") or {}
+    sym = (q.get("unit") or {}).get("symbol") or ""
+
+    def fm(x):
+        if isinstance(x, dict):
+            a, b = x.get("from"), x.get("to")
+            return f"{a:g}–{b:g}" if a is not None and b is not None and a != b else f"{(a if a is not None else b):g}" if (a is not None or b is not None) else ""
+        return f"{x:g}" if isinstance(x, (int, float)) else ""
+    size, pieces = fm(q.get("size")), fm(q.get("pieces"))
+    return " × ".join(x for x in ((pieces + " stk") if pieces else "", f"{size} {sym}".strip() if size else "") if x)
+
+
+def tilbud_detalje(con, cfg, varer, vare_id: str, butik: str, tjek_id: str) -> dict:
+    """Det Tjek sagde om tilbuddet, og hvad der gælder nu: grundlag for rettedialogen."""
+    v = next((x for x in varer if x["id"] == vare_id), None)
+    row = con.execute("SELECT * FROM obs WHERE vare_id=? AND butik=? AND tjek_id=?", (vare_id, butik, tjek_id)).fetchone()
+    r = con.execute("SELECT * FROM ret WHERE vare_id=? AND butik=? AND tjek_id=?", (vare_id, butik, tjek_id)).fetchone()
+    if not v or not (row or r):
+        raise ValueError("Tilbuddet findes ikke længere.")
+    orig = json.loads(r["orig"]) if r else {k: row[k] for k in ta.OBS_KOL}
+    nu = {k: row[k] for k in ta.OBS_KOL} if row else None
+    raa = con.execute("SELECT json FROM raa WHERE tjek_id=?", (tjek_id,)).fetchone()
+    tjek = None
+    if raa:
+        o = json.loads(raa["json"])
+        pm = ta.parse_maengde(o)
+        tjek = dict(overskrift=o.get("heading"), beskrivelse=(o.get("description") or "")[:600],
+                    pris=(o.get("pricing") or {}).get("price"), foer=(o.get("pricing") or {}).get("pre_price"),
+                    maengde_tekst=_maengde_tekst(o), tolket=dict(maengde=pm[0], enhed=pm[1]) if pm else None)
+    return dict(vare=v["navn"], enhed=v["enhed"], butik=butik, butik_navn=cfg["butikker"].get(butik, {}).get("navn", butik),
+                orig=orig, nu=nu, tjek=tjek, ret=dict(r) if r else None)
 
 
 def historik(cfg, varer, con, vare_id: str, idag: date) -> dict:
@@ -255,7 +307,8 @@ def start_hent() -> dict:
 def eksport(con, cfg, varer, historik=False) -> dict:
     """Opsætningen som én fil, så den kan flyttes til en anden pc. Med historik=True følger alle gemte tilbud med."""
     d = dict(format="tilbudsagent-opsaetning", version=ta.VERSION,
-             eksporteret=datetime.now().isoformat(timespec="seconds"), cfg=cfg, varer=varer)
+             eksporteret=datetime.now().isoformat(timespec="seconds"), cfg=cfg, varer=varer,
+             rettelser=[{k: r[k] for k in r.keys() if k != "id"} for r in con.execute("SELECT * FROM ret ORDER BY id")])
     if historik:
         d["raa"] = [dict(r) for r in con.execute("SELECT * FROM raa")]
         d["obs_manuel"] = [{k: r[k] for k in r.keys() if k != "id"} for r in con.execute("SELECT * FROM obs WHERE kilde='manuel'")]
@@ -285,6 +338,30 @@ def flet_historik(con, b: dict) -> tuple[int, int]:
     return ny, manuelle
 
 
+RET_KOL = ["vare_id", "butik", "tjek_id", "moenster", "handling", "pris", "foer_pris", "maengde", "enhedspris",
+           "gyldig_fra", "gyldig_til", "betingelse", "note", "oprettet", "orig"]
+
+
+def flet_ret(con, b: dict) -> int:
+    """Fletter rettelser ind: den nyeste rettelse af samme tilbud vinder, intet andet røres."""
+    n = 0
+    for r in b.get("rettelser") or []:
+        if not isinstance(r, dict) or not all(r.get(k) for k in ("vare_id", "butik", "tjek_id", "handling", "orig")):
+            continue
+        if r["handling"] not in ("ret", "skjul"):
+            continue
+        json.loads(r["orig"])  # skal være gyldig JSON
+        eks = con.execute("SELECT oprettet FROM ret WHERE vare_id=? AND butik=? AND tjek_id=?",
+                          (r["vare_id"], r["butik"], r["tjek_id"])).fetchone()
+        if eks and (eks["oprettet"] or "") >= (r.get("oprettet") or ""):
+            continue
+        con.execute(f"""INSERT INTO ret({','.join(RET_KOL)}) VALUES({','.join('?' * len(RET_KOL))})
+                        ON CONFLICT(vare_id, butik, tjek_id) DO UPDATE SET
+                        {', '.join(f'{k}=excluded.{k}' for k in RET_KOL[3:])}""", [r.get(k) for k in RET_KOL])
+        n += 1
+    return n
+
+
 def import_opsaetning(con, b: dict) -> int:
     if b.get("format") != "tilbudsagent-opsaetning":
         raise ValueError("Det er ikke en eksporteret opsætning fra Tilbudsagent.")
@@ -301,7 +378,7 @@ def import_opsaetning(con, b: dict) -> int:
     for v in varer:
         if not isinstance(v, dict) or not all(k in v for k in ("id", "navn", "enhed", "soeg")) or v["enhed"] not in ("kg", "l", "stk"):
             raise ValueError("En vare i filen er ufuldstændig.")
-    for k in ("raa", "obs_manuel"):
+    for k in ("raa", "obs_manuel", "rettelser"):
         if k in b and not isinstance(b[k], list):
             raise ValueError("Historikken i filen er ugyldig.")
     ta.save_cfg(con, cfg)
@@ -310,11 +387,13 @@ def import_opsaetning(con, b: dict) -> int:
         ta.save_vare(con, v)
     con.execute("INSERT OR REPLACE INTO kv(key,value) VALUES('varer_seedet','1')")
     ny, man = flet_historik(con, b)
+    flet_ret(con, b)
     con.commit()
     cfg2, v2 = ta.get_cfg(con, APP["config"]), ta.get_varer(con, APP["varer"])
     for v in v2:
         ta.ryd_obs(con, v)
     ta.genopbyg(con, cfg2, v2)
+    ta.anvend_alle_ret(con)  # rettelser fra den anden pc gælder også de priser, vi allerede har
     return ny
 
 
@@ -334,7 +413,7 @@ def fejlrapport(con, cfg, varer) -> str:
     return "\n".join([
         f"Tilbudsagent {ta.VERSION}", f"Tid: {datetime.now().isoformat(timespec='seconds')}",
         f"System: {platform.platform()}  Python {sys.version.split()[0]}  pakket: {ta.FROSSET}",
-        f"Observationer: {obs['n']} ({obs['fra']} til {obs['til']})",
+        f"Observationer: {obs['n']} ({obs['fra']} til {obs['til']}), rettelser: {con.execute('SELECT COUNT(*) FROM ret').fetchone()[0]}",
         "Pr. butik: " + ", ".join(f"{r['butik']}={r['n']}" for r in pr_butik),
         f"Seneste hentning: {APP['hent']}", "", "Opsætning (uden adresse/koordinater/nøgle):",
         json.dumps(c, ensure_ascii=False, indent=1), "", f"Varer: {len(varer)}",
@@ -488,6 +567,9 @@ class Handler(BaseHTTPRequestHandler):
                 if u.path == "/api/fejlrapport":
                     return self._send(200, fejlrapport(con, cfg, varer).encode("utf-8"), "text/plain; charset=utf-8",
                                       {"Content-Disposition": 'attachment; filename="tilbudsagent-fejlrapport.txt"'})
+                if u.path == "/api/tilbud":
+                    q = urllib.parse.parse_qs(u.query)
+                    return self._json(tilbud_detalje(con, cfg, varer, q.get("vare", [""])[0], q.get("butik", [""])[0], q.get("tjek_id", [""])[0]))
                 if u.path == "/api/historik":
                     vid = urllib.parse.parse_qs(u.query).get("vare", [""])[0]
                     return self._json(historik(cfg, varer, con, vid, date.today()))
@@ -530,7 +612,18 @@ class Handler(BaseHTTPRequestHandler):
                     ta.genopbyg(con, cfg, [v])  # og find tilbud vi allerede har set, som nu passer
                 elif u == "/api/vare/slet":
                     con.execute("DELETE FROM vare WHERE id=?", (str(b.get("id", "")),))
+                    con.execute("DELETE FROM ret WHERE vare_id=?", (str(b.get("id", "")),))
                     con.commit()
+                elif u == "/api/ret":
+                    if b.get("butik") not in cfg["butikker"]:
+                        raise ValueError("Ukendt butik.")
+                    res = ta.gem_ret(con, cfg, varer, str(b.get("vare_id", "")), str(b["butik"]), str(b.get("tjek_id", "")),
+                                     str(b.get("handling", "ret")), b.get("felter") or {}, str(b.get("note") or ""),
+                                     bool(b.get("gentages")), datetime.now().isoformat(timespec="seconds"))
+                    self._json(dict(ok=True, **res))
+                    return
+                elif u == "/api/ret/slet":
+                    ta.fortryd_ret(con, cfg, varer, int(b.get("id", 0)))
                 elif u == "/api/indstillinger":
                     ny = indstillinger_fra_form(b, cfg)
                     ny, flyttet = hjem_flyttet(cfg, ny)

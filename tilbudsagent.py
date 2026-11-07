@@ -40,7 +40,7 @@ try:
 except ModuleNotFoundError:  # Python 3.10: pip install tomli
     import tomli as tomllib
 
-VERSION = "0.7.1"
+VERSION = "0.8.0"
 FROSSET = getattr(sys, "frozen", False)  # True når appen er pakket som .exe
 # RES: hvor startværdier og app.html ligger. DATA: hvor brugerens database og log gemmes.
 RES = Path(os.environ.get("TILBUDSAGENT_RES") or getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
@@ -130,6 +130,15 @@ def connect(db: Path) -> sqlite3.Connection:
     con.execute("""CREATE TABLE IF NOT EXISTS afstand(
         pos TEXT, butik TEXT, km REAL, navn TEXT, adresse TEXT, lat REAL, lng REAL, metode TEXT, hentet TEXT,
         PRIMARY KEY(pos, butik))""")
+    # Dine rettelser af tilbud. Ligger i en egen tabel, så de ikke overskrives, når tilbuddet hentes igen
+    # (også hvis det udgives påny med et nyt Tjek-id: `moenster` genkender samme butik, tekst og Tjek-pris).
+    con.execute("""CREATE TABLE IF NOT EXISTS ret(
+        id INTEGER PRIMARY KEY, vare_id TEXT NOT NULL, butik TEXT NOT NULL, tjek_id TEXT NOT NULL, moenster TEXT,
+        handling TEXT NOT NULL, pris REAL, foer_pris REAL, maengde REAL, enhedspris REAL,
+        gyldig_fra TEXT, gyldig_til TEXT, betingelse TEXT, note TEXT, oprettet TEXT, orig TEXT NOT NULL,
+        UNIQUE(vare_id, butik, tjek_id))""")
+    if "ret_id" not in [r[1] for r in con.execute("PRAGMA table_info(obs)")]:
+        con.execute("ALTER TABLE obs ADD COLUMN ret_id INTEGER")
     con.execute("CREATE TABLE IF NOT EXISTS kv(key TEXT PRIMARY KEY, value TEXT)")
     con.execute("CREATE TABLE IF NOT EXISTS vare(id TEXT PRIMARY KEY, pos INTEGER, json TEXT NOT NULL)")
     con.commit()
@@ -191,7 +200,7 @@ def get_varer(con, seed: Path) -> list[dict]:
 
 def indsaet(con, **k) -> bool:
     felter = ["hentet", "vare_id", "butik", "overskrift", "pris", "foer_pris", "enhedspris", "enhed",
-              "gyldig_fra", "gyldig_til", "betingelse", "kilde", "tjek_id"]
+              "gyldig_fra", "gyldig_til", "betingelse", "kilde", "tjek_id", "ret_id"]
     cur = con.execute(
         f"INSERT OR IGNORE INTO obs({','.join(felter)}) VALUES({','.join('?' * len(felter))})",
         [k.get(f) for f in felter])
@@ -327,8 +336,178 @@ def raa_gem(con, o: dict, soeg: str, dato: str) -> bool:
     return not fandtes
 
 
-def obs_fra_tilbud(cfg, v, o, hentet):
-    """Et rå tilbud + en vare -> felter til obs, eller None hvis det ikke passer."""
+OBS_KOL = ["hentet", "vare_id", "butik", "overskrift", "pris", "foer_pris", "enhedspris", "enhed",
+           "gyldig_fra", "gyldig_til", "betingelse", "kilde", "tjek_id"]
+
+
+# ------------------------------------------------------------ rettelser ---
+def moenster(butik, overskrift, pris) -> str:
+    """Kendetegn for et tilbud, der går igen: samme butik, samme tekst og samme (forkerte) pris fra Tjek."""
+    tekst = re.sub(r"\s+", " ", (overskrift or "").strip().lower())
+    return f"{butik}|{tekst}|{float(pris):.2f}"
+
+
+def hent_ret(con) -> dict:
+    """Alle rettelser som opslag: (vare, butik, tjek_id) eksakt, eller (vare, mønster) for gengangere."""
+    ix = {}
+    for r in con.execute("SELECT * FROM ret ORDER BY id"):
+        d = dict(r)
+        ix[(d["vare_id"], d["butik"], d["tjek_id"])] = d
+        if d["moenster"]:
+            ix[(d["vare_id"], d["moenster"])] = d
+    return ix
+
+
+def ret_for(ix, vare_id, butik, tjek_id, overskrift, tjek_pris):
+    if not ix:
+        return None
+    r = ix.get((vare_id, butik, tjek_id))
+    if r is None and tjek_pris is not None:
+        r = ix.get((vare_id, moenster(butik, overskrift, tjek_pris)))
+    return r
+
+
+def anvend_ret(k: dict, r: dict, eksakt: bool):
+    """Læg en rettelse oven på felterne i en observation. None = tilbuddet er skjult.
+
+    Datoer rettes kun på det præcise tilbud; et tilbud, der udgives påny, har sine egne datoer."""
+    if r["handling"] == "skjul":
+        return None
+    k = dict(k)
+    k["ret_id"] = r["id"]
+    ep0, p0 = k.get("enhedspris"), k.get("pris")
+    m0 = p0 / ep0 if ep0 and p0 else None
+    for f in ("pris", "foer_pris", "betingelse") + (("gyldig_fra", "gyldig_til") if eksakt else ()):
+        if r[f] is not None:
+            k[f] = r[f]
+    if r["enhedspris"] is not None:
+        k["enhedspris"] = r["enhedspris"]
+    elif r["maengde"]:
+        k["enhedspris"] = k["pris"] / r["maengde"]
+    elif m0 and k["pris"] != p0:
+        k["enhedspris"] = k["pris"] / m0
+    return k
+
+
+def _skriv_obs(con, rid: int, ny, k: dict) -> None:
+    """Opdatér (eller fjern, hvis skjult) en eksisterende observationsrække efter en rettelse."""
+    if ny is None:
+        con.execute("DELETE FROM obs WHERE id=?", (rid,))
+        return
+    con.execute("UPDATE obs SET pris=?, foer_pris=?, enhedspris=?, gyldig_fra=?, gyldig_til=?, betingelse=?, ret_id=? WHERE id=?",
+                (ny["pris"], ny["foer_pris"], ny["enhedspris"], ny["gyldig_fra"], ny["gyldig_til"], ny["betingelse"], ny["ret_id"], rid))
+
+
+def anvend_ret_paa_obs(con, r: dict) -> int:
+    """Gør en rettelse gældende på det, der allerede ligger i obs (selve tilbuddet og evt. gengangere). Returnerer antal rækker."""
+    orig = json.loads(r["orig"])
+    n = 0
+    ny = anvend_ret(dict(orig, ret_id=None), r, True)
+    row = con.execute("SELECT id FROM obs WHERE vare_id=? AND butik=? AND tjek_id=?",
+                      (r["vare_id"], r["butik"], r["tjek_id"])).fetchone()
+    if row:
+        _skriv_obs(con, row["id"], ny, orig)
+        n += 1
+    elif ny is not None:
+        indsaet(con, **ny)
+        n += 1
+    if r["moenster"]:
+        for s in con.execute("SELECT * FROM obs WHERE vare_id=? AND butik=? AND tjek_id!=? AND ret_id IS NULL AND kilde='tjek'",
+                             (r["vare_id"], r["butik"], r["tjek_id"])).fetchall():
+            if s["pris"] is not None and moenster(s["butik"], s["overskrift"], s["pris"]) == r["moenster"]:
+                _skriv_obs(con, s["id"], anvend_ret(dict(s), r, False), dict(s))
+                n += 1
+    return n
+
+
+def _tal(x, navn, lo=0.0, hi=100000.0):
+    if x in (None, ""):
+        return None
+    try:
+        v = float(str(x).replace(",", "."))
+    except ValueError:
+        raise ValueError(f"{navn} skal være et tal.")
+    if not (lo < v <= hi):
+        raise ValueError(f"{navn} skal være større end 0.")
+    return v
+
+
+def gem_ret(con, cfg, varer, vare_id: str, butik: str, tjek_id: str, handling: str, felter: dict, note: str,
+            ogsaa_senere: bool, nu: str) -> dict:
+    """Gem en rettelse (eller skjul tilbuddet) og læg den på de gemte priser med det samme."""
+    if handling not in ("ret", "skjul"):
+        raise ValueError("Ukendt handling.")
+    eks = con.execute("SELECT * FROM ret WHERE vare_id=? AND butik=? AND tjek_id=?", (vare_id, butik, tjek_id)).fetchone()
+    row = con.execute("SELECT * FROM obs WHERE vare_id=? AND butik=? AND tjek_id=?", (vare_id, butik, tjek_id)).fetchone()
+    if eks:
+        orig = json.loads(eks["orig"])  # Tjeks oprindelige tal, også når rækken nu er rettet
+    elif row:
+        orig = {k: row[k] for k in OBS_KOL}
+    else:
+        raise ValueError("Tilbuddet findes ikke længere.")
+    d = dict(pris=None, foer_pris=None, maengde=None, enhedspris=None, gyldig_fra=None, gyldig_til=None, betingelse=None)
+    if handling == "ret":
+        for f, navn in (("pris", "Pris"), ("foer_pris", "Førpris")):
+            v = _tal(felter.get(f), navn)
+            if v is not None and (orig.get(f) is None or abs(v - orig[f]) > 1e-9):
+                d[f] = v
+        for f in ("gyldig_fra", "gyldig_til"):
+            v = (felter.get(f) or "").strip()[:10] or None
+            if v:
+                datetime.strptime(v, "%Y-%m-%d")
+                if v != orig.get(f):
+                    d[f] = v
+        bet = felter.get("betingelse")
+        if bet is not None and str(bet).strip()[:120] != (orig.get("betingelse") or ""):
+            d["betingelse"] = str(bet).strip()[:120]
+        ep, m = _tal(felter.get("enhedspris"), "Enhedspris"), _tal(felter.get("maengde"), "Mængde", hi=1e6)
+        if ep:
+            d["enhedspris"] = ep
+        elif m:
+            d["maengde"] = m
+        if all(v is None for v in d.values()):
+            raise ValueError("Du har ikke ændret noget. Ret et tal, eller tryk «Skjul tilbuddet».")
+    mon = moenster(butik, orig["overskrift"], orig["pris"]) if ogsaa_senere and orig.get("kilde") == "tjek" and orig.get("pris") else None
+    kol = ["pris", "foer_pris", "maengde", "enhedspris", "gyldig_fra", "gyldig_til", "betingelse"]
+    con.execute(
+        f"""INSERT INTO ret(vare_id, butik, tjek_id, moenster, handling, {','.join(kol)}, note, oprettet, orig)
+            VALUES(?,?,?,?,?,{','.join('?' * len(kol))},?,?,?)
+            ON CONFLICT(vare_id, butik, tjek_id) DO UPDATE SET moenster=excluded.moenster, handling=excluded.handling,
+              {', '.join(f'{k}=excluded.{k}' for k in kol)}, note=excluded.note, oprettet=excluded.oprettet""",
+        [vare_id, butik, tjek_id, mon, handling] + [d[k] for k in kol] + [(note or "").strip()[:300], nu, json.dumps(orig, ensure_ascii=False)])
+    r = dict(con.execute("SELECT * FROM ret WHERE vare_id=? AND butik=? AND tjek_id=?", (vare_id, butik, tjek_id)).fetchone())
+    ikke_laengere = bool(eks and eks["moenster"] and eks["moenster"] != mon)
+    if ikke_laengere:  # gengangere skal ikke længere rettes: fjern dem og genskab dem fra de rå tilbud
+        con.execute("DELETE FROM obs WHERE ret_id=? AND tjek_id!=?", (r["id"], tjek_id))
+    antal = anvend_ret_paa_obs(con, r)
+    con.commit()
+    if ikke_laengere:
+        genopbyg(con, cfg, varer)
+    return dict(id=r["id"], antal=antal)
+
+
+def fortryd_ret(con, cfg, varer, rid: int) -> None:
+    """Fjern en rettelse: tilbuddet (og gengangere) går tilbage til det, Tjek sagde."""
+    r = con.execute("SELECT * FROM ret WHERE id=?", (rid,)).fetchone()
+    if not r:
+        raise ValueError("Rettelsen findes ikke.")
+    orig = json.loads(r["orig"])
+    con.execute("DELETE FROM obs WHERE ret_id=?", (rid,))
+    con.execute("DELETE FROM obs WHERE vare_id=? AND butik=? AND tjek_id=?", (r["vare_id"], r["butik"], r["tjek_id"]))
+    con.execute("DELETE FROM ret WHERE id=?", (rid,))
+    indsaet(con, **dict(orig, ret_id=None))  # selve tilbuddet tilbage, også hvis det rå tilbud er slettet for længst
+    con.commit()
+    genopbyg(con, cfg, varer)                # gengangere genskabes fra de rå tilbud
+
+
+def anvend_alle_ret(con) -> None:
+    for r in con.execute("SELECT * FROM ret").fetchall():
+        anvend_ret_paa_obs(con, dict(r))
+    con.commit()
+
+
+def obs_fra_tilbud(cfg, v, o, hentet, ret=None):
+    """Et rå tilbud + en vare -> felter til obs, eller None hvis det ikke passer (eller du har skjult det)."""
     butik = butik_fra_dealer(cfg, (o.get("dealer") or {}).get("name", ""))
     if not butik or not vare_matcher(v, o.get("heading") or ""):
         return None
@@ -338,21 +517,23 @@ def obs_fra_tilbud(cfg, v, o, hentet):
         return None
     m = parse_maengde(o)
     ep = pris / m[0] if m and m[1] == v["enhed"] and m[0] > 0 else None
-    return dict(
+    k = dict(
         hentet=hentet, vare_id=v["id"], butik=butik, overskrift=(o.get("heading") or "").strip(), pris=pris,
         foer_pris=pr.get("pre_price"), enhedspris=ep, enhed=v["enhed"],
         gyldig_fra=(o.get("run_from") or "")[:10] or None, gyldig_til=(o.get("run_till") or "")[:10] or None,
         betingelse=betingelse(f"{o.get('heading', '')} {o.get('description', '')}"), kilde="tjek",
         tjek_id=str(o.get("id")))
+    r = ret_for(ret, v["id"], butik, k["tjek_id"], k["overskrift"], pris)
+    return anvend_ret(k, r, r["tjek_id"] == k["tjek_id"]) if r else k
 
 
 def genopbyg(con, cfg, varer) -> int:
     """Genskab observationer for varerne ud fra alle gemte rå tilbud (efter rettede regler, nye varer eller butikker)."""
-    n = 0
+    n, ix = 0, hent_ret(con)
     for r in con.execute("SELECT json, foerst_set FROM raa").fetchall():
         o = json.loads(r["json"])
         for v in varer:
-            k = obs_fra_tilbud(cfg, v, o, r["foerst_set"])
+            k = obs_fra_tilbud(cfg, v, o, r["foerst_set"], ix)
             if k:
                 n += indsaet(con, **k)
     con.commit()
@@ -361,7 +542,7 @@ def genopbyg(con, cfg, varer) -> int:
 
 def hent(cfg, varer, con, idag: date, fremdrift: dict | None = None) -> dict:
     ukendte, nye, fejl, fejltekster, raa_nye = Counter(), 0, 0, [], 0
-    fr = fremdrift if fremdrift is not None else {}
+    fr, ix = (fremdrift if fremdrift is not None else {}), hent_ret(con)
     fr.update(gjort=0, i_alt=sum(len(soegeord(v)) for v in varer), nye=0, nu="")
     for v in varer:
         for alt in soegeord(v):
@@ -386,7 +567,7 @@ def hent(cfg, varer, con, idag: date, fremdrift: dict | None = None) -> dict:
                     continue
                 if raa_gem(con, o, alt, idag.isoformat()):
                     raa_nye += 1
-                k = obs_fra_tilbud(cfg, v, o, idag.isoformat())
+                k = obs_fra_tilbud(cfg, v, o, idag.isoformat(), ix)
                 if k:
                     nye += indsaet(con, **k)
                     fr["nye"] = nye
@@ -480,7 +661,8 @@ def byg_kandidater(cfg, varer, con, idag):
             kands.setdefault(v["id"], []).append(dict(
                 vare=v, butik=o["butik"], tekst=o["overskrift"], pris=o["pris"], ep=ep, ref=ref, rabat=rabat,
                 maengde=maengde, besparelse=max(0.0, ref - ep) * maengde, lager=lager,
-                betingelse=o["betingelse"], fra=o["gyldig_fra"], til=o["gyldig_til"], kilde=o["kilde"]))
+                betingelse=o["betingelse"], fra=o["gyldig_fra"], til=o["gyldig_til"], kilde=o["kilde"],
+                tjek_id=o["tjek_id"], rettet=bool(o.get("ret_id"))))
     return kands, uafklaret, info
 
 
