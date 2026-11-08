@@ -84,13 +84,16 @@ def dashboard(cfg, varer, con, idag: date) -> dict:
             if o["butik"] not in B:
                 continue
             ep = o["enhedspris"]
-            tilbud.append(dict(
+            rabat = (1 - ep / ref) if ep and ref else None
+            mist = bool(ep and ref and 1 - ep / ref > cfg["regler"].get("max_rabat", 0.6))
+            grund = [] if mist or o["butik"] not in B else ta.top_grunde(cfg, v, rabat, ep, i["bund"], i["n"])
+            tilbud.append(dict(gruppe=v.get("gruppe", ""), topkoeb=bool(grund), top_grunde=grund,
                 vare_id=v["id"], vare=v["navn"], enhed=v["enhed"], butik=o["butik"], butik_navn=B[o["butik"]]["navn"],
                 zone=B[o["butik"]]["zone"], tekst=o["overskrift"], pris=o["pris"], ep=ep,
-                rabat=(1 - ep / ref) if ep and ref else None, fra=o["gyldig_fra"], til=o["gyldig_til"],
+                rabat=rabat, fra=o["gyldig_fra"], til=o["gyldig_til"],
                 betingelse=o["betingelse"], kilde=o["kilde"], i_tur=(v["id"], o["butik"]) in i_tur,
                 tjek_id=o["tjek_id"], rettet=bool(o.get("ret_id")),
-                mistaenkelig=bool(ep and ref and 1 - ep / ref > cfg["regler"].get("max_rabat", 0.6))))
+                mistaenkelig=mist))
 
     lager = [dict(linje(c), butik_navn=B[c["butik"]]["navn"]) for cs in kands.values() for c in cs if c["lager"]]
     sidste = con.execute("SELECT MAX(hentet) m FROM obs WHERE kilde IN ('tjek','manuel')").fetchone()["m"]
@@ -203,6 +206,7 @@ def vare_fra_form(b: dict, eksisterende: list[dict]) -> dict:
         id=vid, navn=navn, enhed=b["enhed"], type=typ, maerker=maerker, udeluk_maerker=liste(b.get("udeluk_maerker")),
         soeg=liste(b.get("soeg")) or (maerker if typ == "specifik" else [navn.lower()]),
         udeluk=liste(b.get("udeluk")),
+        gruppe=str(b.get("gruppe") or "").strip()[:40],
         normal=talfelt(b.get("normal"), 0.01, 100000, "Normalpris", True),
         maal=talfelt(b.get("maal"), 0.01, 100000, "Målpris", True),
         koeb=talfelt(b.get("koeb") or 1, 0.001, 100000, "Købsmængde"),
@@ -234,6 +238,7 @@ def indstillinger_fra_form(b: dict, cfg: dict) -> dict:
     r["min_rabat"] = talfelt(rb.get("min_rabat"), 0, 0.95, "Mindste rabat")
     r["lager_rabat"] = talfelt(rb.get("lager_rabat"), 0, 0.95, "Rabat for lagerkøb")
     r["max_rabat"] = talfelt(rb.get("max_rabat", 0.6), 0.2, 1, "Mistænkelig rabat")
+    r["top_rabat"] = talfelt(rb.get("top_rabat", 0.4), 0.05, 0.95, "Rabat for topkøb")
     r["historik_dage"] = int(talfelt(rb.get("historik_dage"), 14, 1000, "Historik (dage)"))
     butikker = {}
     for key, bb in (b.get("butikker") or {}).items():

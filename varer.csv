@@ -4,17 +4,26 @@
 # udeluk: ord adskilt af |  (tilbud med disse ord ignoreres)
 # normalpris: DIN kendte hyldepris pr. enhed (kr/kg, kr/l, kr/stk). Tom = agenten estimerer fra historik (mindre præcist).
 # maalpris: pris pr. enhed du altid vil have besked om. Tom = ingen.
+# gruppe: fri tekst (fx Kød, Frugt og grønt). Bruges til at filtrere og sortere på tværs af varer.
 # koebsmaengde: hvor meget du normalt køber ad gangen (i enheden). maks_lager: hvor meget du vil lagre ved bundpris (tom = ingen lagerkøb, fx friskvarer).
-id;navn;enhed;soegeord;udeluk;normalpris;maalpris;koebsmaengde;maks_lager
-kaffe;Formalet kaffe;kg;formalet kaffe|filterkaffe;kapsel|kapsl|instant|cappuccino|latte;;;1;4
-toiletpapir;Toiletpapir;stk;toiletpapir;;;;24;72
-koekkenrulle;Køkkenrulle;stk;køkkenrulle;;;;4;12
-tandpasta;Tandpasta;l;tandpasta;tandbørste|tandtråd|mundskyl;;;0.15;0.6
-shampoo;Shampoo;l;shampoo;balsam|conditioner;;;0.5;2
-vaskepulver;Vaskepulver;kg;vaskepulver|vaskemiddel;;;;2;6
-maelk;Mælk;l;mælk;havre|soja|mandel|chokolade;;;6;
-smoer;Smør;kg;smør;smørbar|smørrebrød|smørepålæg|plantedrik|kylling|menu|kage|småkager;;;0.5;2
-ris;Ris;kg;ris;rispapir|riskiks|risengrød|risalamande;;;1;4
-pasta;Pasta;kg;pasta|spaghetti|penne;sauce|saus|pesto|fyldt|salat;;;1;4
-hakket-oksekoed;Hakket oksekød;kg;hakket oksekød|hakket okse;;;;1;
-aeg;Æg;stk;æg;ægte|ægge;;;10;
+id;navn;enhed;soegeord;udeluk;normalpris;maalpris;koebsmaengde;maks_lager;gruppe
+kaffe;Formalet kaffe;kg;formalet kaffe|filterkaffe;kapsel|kapsl|instant|cappuccino|latte;;;1;4;Kolonial
+toiletpapir;Toiletpapir;stk;toiletpapir;;;;24;72;Husholdning og pleje
+koekkenrulle;Køkkenrulle;stk;køkkenrulle;;;;4;12;Husholdning og pleje
+tandpasta;Tandpasta;l;tandpasta;tandbørste|tandtråd|mundskyl;;;0.15;0.6;Husholdning og pleje
+shampoo;Shampoo;l;shampoo;balsam|conditioner;;;0.5;2;Husholdning og pleje
+vaskepulver;Vaskepulver;kg;vaskepulver|vaskemiddel;;;;2;6;Husholdning og pleje
+maelk;Mælk;l;mælk;havre|soja|mandel|chokolade;;;6;;Mejeri og æg
+smoer;Smør;kg;smør;smørbar|smørrebrød|smørepålæg|plantedrik|kylling|menu|kage|småkager;;;0.5;2;Mejeri og æg
+ris;Ris;kg;ris;rispapir|riskiks|risengrød|risalamande;;;1;4;Kolonial
+pasta;Pasta;kg;pasta|spaghetti|penne;sauce|saus|pesto|fyldt|salat;;;1;4;Kolonial
+hakket-oksekoed;Hakket oksekød;kg;hakket oksekød|hakket okse;;;;1;;Kød
+aeg;Æg;stk;æg;ægte|ægge;;;10;;Mejeri og æg
+agurk;Agurk;stk;agurk;syltet|syltede|pickles|dressing|salat|snack|cornichon;;;2;;Frugt og grønt
+tomat;Tomater;kg;tomat|tomater|cherrytomat;puré|puree|ketchup|tomatpuré|tomatketchup|tomatsauce|tomatsuppe|tomatsovs|tomatpasta|tomatsalsa|hakket|hakkede|flåede|soltørret|suppe|sauce|saus|sovs|dåse|pasta|piri|koncentrat|dip|chips|krydder;;;0.5;;Frugt og grønt
+iceberg;Iceberg;stk;iceberg;dressing|burger|menu|wrap|sandwich|mix;;;1;;Frugt og grønt
+aebler;Æbler;kg;æble|æbler;juice|most|kage|grød|mos|chips|cider|cidre|vin|eddike|æblejuice|æblemost|æblekage|æblegrød|æblemos|æblecider|æblechips|æbleeddike|æblesnaps|æblesaft|drik|smoothie|snack|tærte|kompot|saft|brus|snaps;;;1;;Frugt og grønt
+paere;Pærer;kg;pære|pærer;juice|most|kage|grød|mos|chips|saft|drik|dåse|pærejuice|pæremost|pærekage|pæresaft|pærecider;;;1;;Frugt og grønt
+banan;Bananer;kg;banan|bananer;chips|bananchips|bananbrød|banankage|bananmilkshake|brød|kage|milkshake|smoothie|yoghurt|müsli|havre|drik|bar|flager|snack|is;;;1;;Frugt og grønt
+cheasy-skyr;Cheasy skyr;kg;cheasy;;;;1;;Mejeri og æg
+yoghurt;Yoghurt;l;yoghurt|yogurt;drik|drikke|frossen|frozen|dressing|dip|kylling|marinade|kage|snack|is|skyr;;;1;;Mejeri og æg

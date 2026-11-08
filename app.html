@@ -200,6 +200,7 @@ dialog form{padding:20px;display:grid;gap:14px}
 #chart svg{touch-action:pan-y}
 .ret-orig{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:.9rem;display:grid;gap:4px}
 .ret-orig .muted{font-size:.84rem}
+.badge.topkoeb{background:#fff3c4;color:#6b4e00;border-color:#e6c75a;font-weight:600}
 .r-ret{font-size:.8rem;margin-left:6px}
 
 /* telefon: tabeller bliver til kort, større trykflader, dialoger i fuld bredde */
@@ -274,7 +275,7 @@ const dKort = iso => iso ? new Date(iso.slice(0,10)+"T12:00").toLocaleDateString
 const dLang = iso => new Date(iso+"T12:00").toLocaleDateString("da-DK",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
 const TABS = [["overblik","Overblik"],["tilbud","Tilbud"],["varer","Varer"],["indstillinger","Indstillinger"]];
 
-let S = null, tab = "overblik", chartVare = null, filt = {vare:"",butik:"",tur:false,q:"",sort:"rabat"}, draft = null, tblView = false, lastHist = null;
+let S = null, tab = "overblik", chartVare = null, filt = {vare:"",butik:"",gruppe:"",maxep:"",top:false,tur:false,q:"",sort:"rabat"}, draft = null, tblView = false, lastHist = null;
 
 async function api(path, body){
   const opt = body === undefined ? {} : {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)};
@@ -405,7 +406,8 @@ async function poll(){
   else if(h && h.resultat){
     const r = h.resultat;
     if(r.fejl && !r.nye) showDone("err", `Tjek svarede ikke (${r.fejl} søgninger fejlede)${r.fejltekster?.length ? ": " + r.fejltekster[0] : ""}.`, 0);
-    else showDone("ok", `Færdig: ${r.raa_nye ?? r.nye} nye tilbud set, heraf ${r.nye} nye til dine varer${r.fejl ? `, ${r.fejl} søgninger fejlede` : ""}.`, 12000);
+    else { const nt = S.dash.tilbud.filter(t => t.topkoeb).length;
+      showDone("ok", `Færdig: ${r.raa_nye ?? r.nye} nye tilbud set, heraf ${r.nye} nye til dine varer${r.fejl ? `, ${r.fejl} søgninger fejlede` : ""}.${nt ? ` Der er ${nt} ekstra gode tilbud lige nu.` : ""}`, 12000); }
   }
 }
 setInterval(async () => {  // fanger automatisk hentning, der starter mens siden er åben
@@ -452,7 +454,15 @@ function overblik(){
   const lager = d.lager.length ? `<section class="card"><div class="card-head"><h2>Lagerkøb nær bundpris</h2><p class="muted small">Tilbud tæt på den laveste pris, agenten har set, og mindst ${pct(S.cfg.regler.lager_rabat)} under normalpris.</p></div>
       <div class="tablewrap"><table><tbody>${d.lager.map(l=>`<tr><td>${esc(l.vare)}</td><td>${esc(l.butik_navn)}</td><td class="num">${kr(l.ep)} kr/${l.enhed}</td><td class="num">${pct(l.rabat)} under</td><td class="num">op til ${mg(l.maengde)} ${l.enhed}</td></tr>`).join("")}</tbody></table></div></section>` : "";
 
-  return `<div class="grid-main"><div class="col-main">${notes}${afv}${graf}${lager}</div><aside class="col-receipt">${receipt()}</aside></div>`;
+  const top = d.tilbud.filter(t => t.topkoeb).sort((a,b) => (b.rabat ?? -1) - (a.rabat ?? -1));
+  const topKort = top.length ? `<section class="card"><div class="card-head"><h2>Ekstra gode tilbud (${top.length})</h2>
+      <p class="muted small">Mindst ${pct(S.cfg.regler.top_rabat ?? 0.4)} under normalpris, under din målpris eller nær den laveste pris, agenten har set.</p></div>
+      <div class="tablewrap"><table><thead><tr><th>Vare</th><th>Butik</th><th class="num">Pris</th><th class="num">Enhedspris</th><th class="num">Rabat</th><th>Hvorfor</th><th>Gælder</th></tr></thead><tbody>
+      ${top.slice(0,10).map(t=>`<tr><td><b>${esc(t.vare)}</b><br><span class="small muted">${esc(t.tekst)}</span></td><td>${zdot(t.zone)} ${esc(t.butik_navn)}</td><td class="num">${kr(t.pris)}</td>
+        <td class="num">${kr(t.ep)} kr/${t.enhed}</td><td class="num">${t.rabat!=null ? pct(t.rabat) : "–"}</td><td class="small">${esc(t.top_grunde.join(", "))}</td><td>${gaelder(t)}</td></tr>`).join("")}
+      </tbody></table></div>
+      ${top.length > 10 || true ? `<p style="margin-top:10px"><button class="link small" id="se-top">Se alle i Tilbud</button></p>` : ""}</section>` : "";
+  return `<div class="grid-main"><div class="col-main">${notes}${topKort}${afv}${graf}${lager}</div><aside class="col-receipt">${receipt()}</aside></div>`;
 }
 
 function receipt(){
@@ -558,22 +568,31 @@ function gaelder(t){
 }
 function tilbudView(){
   const d = S.dash;
+  const maxep = parseFloat(String(filt.maxep).replace(",", "."));
   const rows = d.tilbud.filter(t => (!filt.vare || t.vare_id === filt.vare) && (!filt.butik || t.butik === filt.butik)
+    && (!filt.gruppe || (t.gruppe || "") === filt.gruppe) && (!filt.top || t.topkoeb)
+    && (!(maxep > 0) || (t.ep != null && t.ep <= maxep))
     && (!filt.tur || t.i_tur) && (!filt.q || (t.tekst + " " + t.vare).toLowerCase().includes(filt.q.toLowerCase())))
     .sort(filt.sort === "udloeb" ? (a,b) => (a.til || "9999").localeCompare(b.til || "9999") || (b.rabat ?? -1) - (a.rabat ?? -1)
-                                 : (a,b) => (b.rabat ?? -1) - (a.rabat ?? -1));
+         : filt.sort === "pris" ? (a,b) => (a.ep ?? 1e9) - (b.ep ?? 1e9)
+         : (a,b) => (b.rabat ?? -1) - (a.rabat ?? -1));
+  const grupper = [...new Set(S.varer.map(v => v.gruppe).filter(Boolean))].sort((a,b) => a.localeCompare(b, "da"));
+  const gOpt = `<option value="">Alle grupper</option>` + grupper.map(g=>`<option value="${esc(g)}" ${filt.gruppe===g?"selected":""}>${esc(g)}</option>`).join("");
   const vOpt = `<option value="">Alle varer</option>` + S.varer.map(v=>`<option value="${esc(v.id)}" ${filt.vare===v.id?"selected":""}>${esc(v.navn)}</option>`).join("");
   const bOpt = `<option value="">Alle butikker</option>` + Object.entries(S.cfg.butikker).map(([id,b])=>`<option value="${esc(id)}" ${filt.butik===id?"selected":""}>${esc(b.navn)}</option>`).join("");
   return `<section class="card"><div class="card-head"><h2>Aktive tilbud</h2><button class="btn ghost small" data-do="manuel">Indtast tilbud manuelt</button>
     <p class="muted small">Stemmer en pris ikke med tilbudsavisen, så tryk «Ret». Din rettelse bliver gemt for sig og overskrives ikke, når tilbuddet hentes igen.</p></div>
     <div class="filters"><label class="f small">Vare<select data-f="vare">${vOpt}</select></label><label class="f small">Butik<select data-f="butik">${bOpt}</select></label>
       <label class="f small">Søg i tilbudstekst<input type="text" data-f="q" value="${esc(filt.q)}"></label>
-      <label class="f small">Sorter efter<select data-f="sort"><option value="rabat" ${filt.sort==="rabat"?"selected":""}>Størst rabat</option><option value="udloeb" ${filt.sort==="udloeb"?"selected":""}>Udløber først</option></select></label>
+      <label class="f small">Sorter efter<select data-f="sort"><option value="rabat" ${filt.sort==="rabat"?"selected":""}>Størst rabat</option><option value="pris" ${filt.sort==="pris"?"selected":""}>Laveste enhedspris</option><option value="udloeb" ${filt.sort==="udloeb"?"selected":""}>Udløber først</option></select></label>
+      <label class="f small">Gruppe<select data-f="gruppe">${gOpt}</select></label>
+      <label class="f small">Højeste enhedspris<span class="inl"><input type="text" inputmode="decimal" data-f="maxep" value="${esc(filt.maxep)}" placeholder="fx 60"><span class="suf">kr/kg, l eller stk</span></span></label>
+      <label class="small inl"><input type="checkbox" data-f="top" ${filt.top?"checked":""}> Kun ekstra gode tilbud</label>
       <label class="small inl"><input type="checkbox" data-f="tur" ${filt.tur?"checked":""}> Kun tilbud i ugens tur</label></div>
     ${rows.length ? `<div class="tablewrap"><table><thead><tr><th>Vare</th><th>Butik</th><th>Tilbud</th><th class="num">Pris</th><th class="num">Enhedspris</th><th class="num">Rabat</th><th>Gælder</th><th></th></tr></thead><tbody>
       ${rows.map(t=>`<tr><td>${esc(t.vare)}</td><td>${zdot(t.zone)} ${esc(t.butik_navn)}</td><td>${esc(t.tekst)}</td><td class="num">${kr(t.pris)}</td>
         <td class="num">${t.ep ? kr(t.ep)+" kr/"+t.enhed : '<span class="badge warn">ukendt</span>'}</td><td class="num">${t.rabat!=null ? pct(t.rabat) : "–"}</td>
-        <td>${gaelder(t)}</td><td><button class="btn ghost small" data-ret-v="${esc(t.vare_id)}" data-ret-b="${esc(t.butik)}" data-ret-t="${esc(t.tjek_id)}" title="Stemmer prisen ikke med avisen? Ret den.">Ret</button> ${t.rettet?'<span class="badge in">rettet</span> ':""}${t.i_tur?'<span class="badge in">i turen</span> ':""}${t.mistaenkelig?'<span class="badge warn" title="Rabatten er højere end grænsen i Indstillinger. Det er oftest en forkert pakkestørrelse.">urealistisk rabat – ikke brugt</span> ':""}${t.betingelse?`<span class="badge warn">${esc(t.betingelse)}</span>`:""}${t.kilde==="manuel"?' <span class="badge">manuel</span>':""}</td></tr>`).join("")}
+        <td>${gaelder(t)}</td><td><button class="btn ghost small" data-ret-v="${esc(t.vare_id)}" data-ret-b="${esc(t.butik)}" data-ret-t="${esc(t.tjek_id)}" title="Stemmer prisen ikke med avisen? Ret den.">Ret</button> ${t.topkoeb?`<span class="badge topkoeb" title="${esc(t.top_grunde.join(", "))}">Topkøb</span> `:""}${t.rettet?'<span class="badge in">rettet</span> ':""}${t.i_tur?'<span class="badge in">i turen</span> ':""}${t.mistaenkelig?'<span class="badge warn" title="Rabatten er højere end grænsen i Indstillinger. Det er oftest en forkert pakkestørrelse.">urealistisk rabat – ikke brugt</span> ':""}${t.betingelse?`<span class="badge warn">${esc(t.betingelse)}</span>`:""}${t.kilde==="manuel"?' <span class="badge">manuel</span>':""}</td></tr>`).join("")}
       </tbody></table></div>` : `<p class="empty">Ingen tilbud matcher. ${d.antal_obs ? "Prøv at fjerne et filter." : "Tryk på Hent tilbud øverst."}</p>`}
     ${d.uafklaret.length ? `<p class="small muted" style="margin-top:12px">${d.uafklaret.length} tilbud mangler pakkestørrelse, så enhedsprisen kunne ikke regnes ud. De tæller ikke med i turen. Tryk «Ret» og skriv pakkens mængde.</p>` : ""}</section>${rettelserView()}`;
 }
@@ -597,7 +616,7 @@ function varerView(){
   return `<section class="card"><div class="card-head"><h2>Varer</h2><button class="btn" data-do="vare-ny">Tilføj vare</button>
     <p class="muted small">Agenten søger efter disse varer hver gang du henter tilbud. Klik på en række for at rette den. Vil du både have din faste mærkevare og en billig erstatning, så tilføj varen to gange: én med bestemte mærker og én med alle mærker.</p></div>
     ${S.varer.length ? `<div class="tablewrap"><table><thead><tr><th>Vare</th><th>Søger efter</th><th class="num">Normalpris</th><th class="num">Målpris</th><th class="num">Køber pr. gang</th><th class="num">Maks. lager</th><th class="num">Priser gemt</th></tr></thead><tbody>
-    ${S.varer.map(v=>`<tr class="click" data-vare="${esc(v.id)}" tabindex="0"><td><b>${esc(v.navn)}</b> <span class="muted">(${v.enhed})</span></td><td>${v.type==="specifik" ? `<span class="badge in">kun bestemte</span> ${esc(v.maerker.join(", "))}` : `<span class="badge">alle mærker</span> ${esc(v.soeg.join(", "))}`}${v.type!=="specifik" && v.udeluk_maerker.length?`<br><span class="small muted">undgår: ${esc(v.udeluk_maerker.join(", "))}</span>`:""}${v.udeluk.length?`<br><span class="small muted">uden ordene: ${esc(v.udeluk.join(", "))}</span>`:""}</td>
+    ${S.varer.map(v=>`<tr class="click" data-vare="${esc(v.id)}" tabindex="0"><td><b>${esc(v.navn)}</b> <span class="muted">(${v.enhed})</span>${v.gruppe ? `<br><span class="small muted">${esc(v.gruppe)}</span>` : ""}</td><td>${v.type==="specifik" ? `<span class="badge in">kun bestemte</span> ${esc(v.maerker.join(", "))}` : `<span class="badge">alle mærker</span> ${esc(v.soeg.join(", "))}`}${v.type!=="specifik" && v.udeluk_maerker.length?`<br><span class="small muted">undgår: ${esc(v.udeluk_maerker.join(", "))}</span>`:""}${v.udeluk.length?`<br><span class="small muted">uden ordene: ${esc(v.udeluk.join(", "))}</span>`:""}</td>
       <td class="num">${v.normal ? kr(v.normal) : '<span class="muted">estimeres</span>'}</td><td class="num">${v.maal ? kr(v.maal) : "–"}</td><td class="num">${mg(v.koeb)} ${v.enhed}</td><td class="num">${v.lager ? mg(v.lager)+" "+v.enhed : "–"}</td><td class="num">${st[v.id]?.obs ?? 0}</td></tr>`).join("")}
     </tbody></table></div>` : `<p class="empty">Ingen varer endnu. Tilføj den første.</p>`}</section>`;
 }
@@ -609,6 +628,9 @@ function vareDialog(id){
     <input type="hidden" id="v-id" value="${esc(id||"")}">
     <div class="row2"><label class="f">Navn<input type="text" id="v-navn" value="${esc(v.navn)}" required></label>
       <label class="f">Enhed<select id="v-enhed"><option value="kg">kg</option><option value="l">liter</option><option value="stk">stk (også ruller, æg)</option></select></label></div>
+    <label class="f">Gruppe<input type="text" id="v-gruppe" list="v-grupper" value="${esc(v.gruppe || "")}" placeholder="fx Kød, Frugt og grønt">
+      <datalist id="v-grupper">${[...new Set(S.varer.map(x => x.gruppe).filter(Boolean))].map(g=>`<option value="${esc(g)}">`).join("")}</datalist>
+      <span class="hint">Valgfri. Under Tilbud kan du vise en hel gruppe samlet, sorteret på enhedspris, fx al kød under 60 kr/kg.</span></label>
     <div class="radios" role="radiogroup" aria-label="Mærke">
       <label><input type="radio" name="v-type" value="generisk" ${v.type !== "specifik" ? "checked" : ""}><span>Alle mærker</span><span class="hint">Agenten tager det billigste tilbud, uanset mærke. Du kan undgå bestemte mærker.</span></label>
       <label><input type="radio" name="v-type" value="specifik" ${v.type === "specifik" ? "checked" : ""}><span>Kun bestemte mærker eller produkter</span><span class="hint">Fx din faste ketchup. Tilbud på andre mærker ignoreres.</span></label>
@@ -636,7 +658,7 @@ function vareDialog(id){
   $("#v-annuller").onclick = () => $("#dlg-vare").close();
   if(!ny){ let armed = false; $("#v-slet").onclick = e => { if(!armed){ armed = true; e.target.textContent = "Bekræft sletning"; return; }
     $("#dlg-vare").close(); act(() => api("/api/vare/slet", {id}), "Vare slettet."); }; }
-  f.onsubmit = e => { e.preventDefault(); const body = {id: $("#v-id").value || undefined, navn: $("#v-navn").value, enhed: enh(), soeg: $("#v-soeg").value, udeluk: $("#v-udeluk").value,
+  f.onsubmit = e => { e.preventDefault(); const body = {id: $("#v-id").value || undefined, navn: $("#v-navn").value, enhed: enh(), soeg: $("#v-soeg").value, udeluk: $("#v-udeluk").value, gruppe: $("#v-gruppe").value,
       type: f.querySelector("input[name=v-type]:checked").value, maerker: $("#v-maerker").value, udeluk_maerker: $("#v-udmaerke").value,
       normal: $("#v-normal").value, maal: $("#v-maal").value, koeb: $("#v-koeb").value, lager: $("#v-lager").value};
     api("/api/vare", body).then(() => { $("#dlg-vare").close(); toast("Gemt."); return load(); }).catch(err => toast(err.message, true)); };
@@ -758,6 +780,7 @@ function indstillingerView(){
     <label class="f">Mindste rabat${inp("regler.min_rabat",{scale:100,suf:"%"})}<span class="hint">Under normalpris.</span></label>
     <label class="f">Rabat for lagerkøb${inp("regler.lager_rabat",{scale:100,suf:"%"})}<span class="hint">Sammen med nær bundpris.</span></label>
     <label class="f">Historik${inp("regler.historik_dage",{suf:"dage"})}<span class="hint">Bruges til normal- og bundpris.</span></label>
+    <label class="f">Ekstra godt tilbud fra${inp("regler.top_rabat",{scale:100,suf:"%"})}<span class="hint">Vises som «Topkøb» og øverst på Overblik.</span></label>
     <label class="f">Mistænkelig rabat fra${inp("regler.max_rabat",{scale:100,suf:"%"})}<span class="hint">Højere rabatter bruges ikke. Oftest en forkert pakkestørrelse.</span></label></div></div></section>
 
   <section class="card"><div class="card-head"><h2>Sikkerhedskopi og flytning</h2><p class="muted small">«Opsætning» er varer, butikker, adresse og regler. «Komplet» tager også alle gemte tilbud med, så prishistorikken kan flyttes til en anden pc. Ved import flettes historikken sammen uden dubletter.</p></div>
@@ -792,6 +815,7 @@ function render(){
   if(tab === "overblik"){ const s = $("#hv"); if(s){ s.onchange = () => { chartVare = s.value; loadHist(); }; $("#tbl").onclick = () => { tblView = !tblView; $("#tbl").textContent = tblView ? "Vis som graf" : "Vis som tabel"; drawChart(); }; loadHist(); } }
 }
 document.addEventListener("click", e => {
+  if(e.target.closest("#se-top")){ filt = {vare:"",butik:"",gruppe:"",maxep:"",top:true,tur:false,q:"",sort:"rabat"}; tab = "tilbud"; render(); return; }
   const t = e.target.closest("[data-do],[data-tab-go],[data-vare],[data-ret-t],[data-ret-fortryd],[data-bdel],#badd,#gem,#fortryd,#geo,[data-geo],#p-find,#p-ok,#p-annuller,[data-pgeo],[data-pos-sen],#find-luk,#hjem-gem,#p-gps"); if(!t) return;
   if(t.id === "p-gps"){
     t.disabled = true; t.textContent = "Finder position …";
@@ -857,12 +881,12 @@ document.addEventListener("keydown", e => {
 });
 document.addEventListener("input", e => {
   const el = e.target;
-  if(el.dataset.f){ filt[el.dataset.f] = el.type === "checkbox" ? el.checked : el.value; if(el.type === "text") { const pos = el.selectionStart; render(); const n = $('[data-f="q"]'); n.focus(); n.setSelectionRange(pos,pos); } else render(); return; }
+  if(el.dataset.f){ filt[el.dataset.f] = el.type === "checkbox" ? el.checked : el.value; if(el.type === "text") { const pos = el.selectionStart, k = el.dataset.f; render(); const n = $(`[data-f="${k}"]`); n.focus(); n.setSelectionRange(pos,pos); } else render(); return; }
   if(el.dataset.p && draft){ let v = el.type === "checkbox" ? el.checked : el.value; if(el.type === "number") v = v === "" ? null : parseFloat(v) / (+el.dataset.sc || 1); setp(draft, el.dataset.p, v); }
 });
 document.addEventListener("change", e => {
   const el = e.target;
-  if(["vare","butik","tur","sort"].includes(el.dataset.f)){ filt[el.dataset.f] = el.type === "checkbox" ? el.checked : el.value; render(); }
+  if(["vare","butik","gruppe","top","tur","sort"].includes(el.dataset.f)){ filt[el.dataset.f] = el.type === "checkbox" ? el.checked : el.value; render(); }
   if(el.dataset.sunk && draft){ const s = new Set(draft.koersel.sunk_zoner); el.checked ? s.add(el.dataset.sunk) : s.delete(el.dataset.sunk); draft.koersel.sunk_zoner = [...s]; }
   if(el.dataset.fast && draft){ const b = draft.butikker[el.dataset.fast], e = (S.eff_butikker || {})[el.dataset.fast] || {};
     if(el.checked){ b.fast_afstand = true; if(e.fundet) { b.afstand_km = e.afstand_km; b.zone = e.zone; } } else delete b.fast_afstand; render(); }

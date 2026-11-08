@@ -80,6 +80,12 @@ Henter ugens tilbud fra Tjek (eTilbudsavis), gemmer dem i SQLite og anbefaler, h
 - **Signering:** APK'en signeres med en fast nøgle fra GitHub-hemmelighederne `KEYSTORE_BASE64` og `KEYSTORE_KODE`. Samme nøgle skal bruges hver gang; ellers kan telefonen ikke opdatere appen, kun geninstallere den.
 - Kræver Android 10 eller nyere. Baggrundshentning er ikke pålidelig på Android: appen henter, når den åbnes og der er gået over et døgn.
 
+### v0.9.0
+
+- **Otte nye startvarer:** agurk, tomater, iceberg, æbler, pærer, bananer, Cheasy skyr og yoghurt. De lægges i din varebeholdning én gang; varer, du selv har slettet eller rettet, røres ikke. Normalpris er tom, så udfyld den under Varer for præcise rabatter.
+- **Grupper.** Hver vare kan have en gruppe (fx Kød, Frugt og grønt). Under Tilbud kan du vælge en gruppe, sortere på «Laveste enhedspris» og sætte «Højeste enhedspris», så al kød under 60 kr/kg vises samlet, uanset type.
+- **Ekstra gode tilbud («Topkøb»).** Et tilbud er et topkøb, når det er mindst 40 % under normalpris (kan ændres under Indstillinger), under din målpris eller nær den laveste pris, agenten har set. De vises øverst på Overblik, har et gult mærke under Tilbud og kan filtreres med «Kun ekstra gode tilbud». Efter en hentning nævner beskeden, hvor mange der er lige nu.
+
 ### v0.8.1
 
 - **Rettelser udløber.** En rettelse gælder til tilbuddets sidste dag og forsvinder så fra listen «Rettelser og skjulte tilbud». En helt ny tilbudsavis, der starter efter udløbet, får ikke rettelsen, selv om tilbuddet ligner. De rettede priser bliver i prishistorikken.

@@ -24,6 +24,7 @@ pause_sek = 1.5         # pause mellem kald – vær venlig ved API'et
 min_rabat = 0.15        # et tilbud skal være mindst 15 % under normalpris for at tælle
 lager_rabat = 0.30      # ...og mindst 30 % under + nær bundpris for at udløse lagerkøb
 max_rabat = 0.60        # rabatter over 60 % regnes for urealistiske (forkert pakkestørrelse) og bruges ikke
+top_rabat = 0.40        # ekstra godt tilbud («topkøb»): mindst 40 % under normalpris (eller under målpris / nær laveste pris)
 historik_dage = 180     # hvor langt tilbage historikken ser (normalpris, bundpris)
 
 # --- Butikker -------------------------------------------------------------

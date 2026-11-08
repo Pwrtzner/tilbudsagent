@@ -40,7 +40,7 @@ try:
 except ModuleNotFoundError:  # Python 3.10: pip install tomli
     import tomli as tomllib
 
-VERSION = "0.8.1"
+VERSION = "0.9.0"
 FROSSET = getattr(sys, "frozen", False)  # True når appen er pakket som .exe
 # RES: hvor startværdier og app.html ligger. DATA: hvor brugerens database og log gemmes.
 RES = Path(os.environ.get("TILBUDSAGENT_RES") or getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
@@ -111,6 +111,7 @@ def load_varer(path: Path) -> list[dict]:
                 "udeluk": [s.strip().lower() for s in (r["udeluk"] or "").split("|") if s.strip()],
                 "normal": tal(r["normalpris"]), "maal": tal(r["maalpris"]),
                 "koeb": tal(r["koebsmaengde"]) or 1.0, "lager": tal(r["maks_lager"]),
+                "gruppe": (r.get("gruppe") or "").strip(),
             })
     return varer
 
@@ -158,6 +159,7 @@ def get_cfg(con, seed: Path) -> dict:
     if r:
         cfg = json.loads(r["value"])
         cfg["regler"].setdefault("max_rabat", 0.6)
+        cfg["regler"].setdefault("top_rabat", 0.40)
         cfg.setdefault("app", {}).setdefault("auto_hent", True)
         cfg["koersel"].setdefault("zone_graenser", [10, 20])
         cfg["koersel"].setdefault("auto_afstand", False)
@@ -167,6 +169,7 @@ def get_cfg(con, seed: Path) -> dict:
     cfg = load_config(seed)
     cfg.setdefault("adresse", "")
     cfg["regler"].setdefault("max_rabat", 0.6)
+    cfg["regler"].setdefault("top_rabat", 0.40)
     cfg.setdefault("app", {}).setdefault("auto_hent", True)
     cfg["koersel"].setdefault("zone_graenser", [10, 20])
     cfg["koersel"].setdefault("auto_afstand", False)
@@ -183,6 +186,9 @@ def save_vare(con, v: dict) -> None:
     con.commit()
 
 
+STARTVARER_090 = {"agurk", "tomat", "iceberg", "aebler", "paere", "banan", "cheasy-skyr", "yoghurt"}
+
+
 def get_varer(con, seed: Path) -> list[dict]:
     if not con.execute("SELECT 1 FROM kv WHERE key='varer_seedet'").fetchone():
         if not con.execute("SELECT 1 FROM vare LIMIT 1").fetchone() and seed.exists():
@@ -190,8 +196,20 @@ def get_varer(con, seed: Path) -> list[dict]:
                 save_vare(con, v)
         con.execute("INSERT OR REPLACE INTO kv(key,value) VALUES('varer_seedet','1')")
         con.commit()
+    if not con.execute("SELECT 1 FROM kv WHERE key='varer_v090'").fetchone() and seed.exists():
+        # v0.9.0: nye startvarer (frugt, grønt, mejeri) og grupper på de gamle. Kun én gang; dine egne ændringer røres ikke.
+        eksist = {r["id"]: json.loads(r["json"]) for r in con.execute("SELECT id, json FROM vare")}
+        for v in load_varer(seed):
+            if v["id"] not in eksist:
+                if v["id"] in STARTVARER_090:   # en vare, du selv har slettet, kommer ikke tilbage
+                    save_vare(con, v)
+            elif not eksist[v["id"]].get("gruppe") and v.get("gruppe"):
+                save_vare(con, dict(eksist[v["id"]], gruppe=v["gruppe"]))
+        con.execute("INSERT OR REPLACE INTO kv(key,value) VALUES('varer_v090','1')")
+        con.commit()
     def med_standard(v):
         v.setdefault("type", "generisk")
+        v.setdefault("gruppe", "")
         v.setdefault("maerker", [])
         v.setdefault("udeluk_maerker", [])
         return v
@@ -651,6 +669,20 @@ def aktive(con, v, idag):
         elif r["butik"] not in bedst or r["enhedspris"] < bedst[r["butik"]]["enhedspris"]:
             bedst[r["butik"]] = r
     return list(bedst.values()), uafklaret
+
+
+def top_grunde(cfg, v, rabat, ep, bund, n) -> list[str]:
+    """Hvorfor et tilbud er ekstra godt («topkøb»). Tom liste = almindeligt tilbud."""
+    reg, g = cfg["regler"], []
+    if ep is None:
+        return g
+    if v.get("maal") and ep <= v["maal"]:
+        g.append("under din målpris")
+    if rabat is not None and rabat >= reg.get("top_rabat", 0.40):
+        g.append(f"{round(rabat * 100)} % under normalpris")
+    if bund is not None and n >= 4 and ep <= bund * 1.05 and rabat is not None and rabat >= reg["min_rabat"]:
+        g.append("nær den laveste pris set")
+    return g
 
 
 def byg_kandidater(cfg, varer, con, idag):
