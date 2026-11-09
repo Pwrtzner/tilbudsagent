@@ -57,6 +57,7 @@ object Planlaeg {
     }
 
     fun nu(ctx: Context) {
-        WorkManager.getInstance(ctx).enqueue(OneTimeWorkRequestBuilder<HentWorker>().setConstraints(krav()).build())
+        android.util.Log.i("Tilbudsagent", "baggrundsjob bestilt")
+        WorkManager.getInstance(ctx).enqueue(OneTimeWorkRequestBuilder<HentWorker>().build())
     }
 }

@@ -31,6 +31,8 @@ print('OK: version', s['version'], '|', len(s['varer']), 'varer |', len(s['cfg']
 curl -fs http://127.0.0.1:18765/ | grep -q "Tilbudsagent" || { echo "app.html mangler"; exit 1; }
 
 # baggrundsjobbet (WorkManager kører Python i en Worker): start ét job og vent på dets logbesked
+adb shell am force-stop dk.pwrtzner.tilbudsagent
+sleep 2
 adb logcat -c
 adb shell am start -n dk.pwrtzner.tilbudsagent/.MainActivity --ez worker_test true
 kort=0
@@ -44,6 +46,7 @@ if [ "$kort" != 1 ]; then
   exit 1
 fi
 adb logcat -d -s Tilbudsagent:I | grep "worker færdig" | head -2
+for i in $(seq 1 60); do curl -fs http://127.0.0.1:18765/api/ping | grep -q tilbudsagent && break; sleep 2; done
 curl -fs http://127.0.0.1:18765/api/state | python3 -c "import json,sys; s=json.load(sys.stdin); assert 'nyt' in s['dash']; print('OK: feed i state')"
 
 # kan appen hente fra internettet (Overpass/Tjek) med Androids certifikater? Kun logget, ikke krævet.
