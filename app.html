@@ -4,24 +4,31 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Tilbudsagent</title>
+<script>try{var _t=localStorage.getItem('tema');if(_t==='lys'||_t==='moerk')document.documentElement.dataset.tema=_t}catch(e){}</script>
 <style>
 :root{
   color-scheme: light;
   --bg:#f2f4f7; --panel:#ffffff; --ink:#121821; --ink-2:#465162; --ink-3:#657083; --line:#dfe3e9; --line-2:#eceff3;
   --btn:#121821; --btn-ink:#ffffff; --focus:#2a78d6; --danger:#b42318; --note:#fff7e0; --note-line:#ecd9a0;
   --z1:#2a78d6; --z2:#eb6834; --z3:#1baf7a; --z0:#8a94a3;
+  --run-bg:#e8f1fd; --run-line:#b9d2f3; --ok-bg:#e6f5ee; --ok-line:#b5dfc9; --err-bg:#fdeceb; --err-line:#f0b9b4;
+  --warn-bg:#fff4d6; --top-bg:#fff3c4; --top-ink:#6b4e00; --top-line:#e6c75a;
   --paper:#fbfbf7; --paper-ink:#1c1f24; --paper-2:#5b616b; --paper-line:#b9bcc2;
   --font:"Segoe UI Variable Text","Segoe UI",system-ui,-apple-system,sans-serif;
   --mono:"Cascadia Mono","Cascadia Code",Consolas,ui-monospace,monospace;
 }
 @media (prefers-color-scheme: dark){
-  :root{
-    color-scheme: dark;
-    --bg:#0e1218; --panel:#161b23; --ink:#eef1f5; --ink-2:#b5beca; --ink-3:#8c98a8; --line:#2a313c; --line-2:#212833;
+  :root:not([data-tema="lys"]){ color-scheme: dark; --bg:#0e1218; --panel:#161b23; --ink:#eef1f5; --ink-2:#b5beca; --ink-3:#8c98a8; --line:#2a313c; --line-2:#212833;
     --btn:#eef1f5; --btn-ink:#121821; --focus:#6da7ec; --danger:#f08b82; --note:#2a2412; --note-line:#5a4c1d;
     --z1:#3987e5; --z2:#d95926; --z3:#199e70; --z0:#7b8696;
-  }
+    --run-bg:#14233a; --run-line:#27456f; --ok-bg:#12291f; --ok-line:#235a40; --err-bg:#341a18; --err-line:#7a2f29;
+    --warn-bg:#2a2412; --top-bg:#3a2f0a; --top-ink:#f3d98a; --top-line:#7a6420; }
 }
+:root[data-tema="moerk"]{ color-scheme: dark; --bg:#0e1218; --panel:#161b23; --ink:#eef1f5; --ink-2:#b5beca; --ink-3:#8c98a8; --line:#2a313c; --line-2:#212833;
+  --btn:#eef1f5; --btn-ink:#121821; --focus:#6da7ec; --danger:#f08b82; --note:#2a2412; --note-line:#5a4c1d;
+  --z1:#3987e5; --z2:#d95926; --z3:#199e70; --z0:#7b8696;
+  --run-bg:#14233a; --run-line:#27456f; --ok-bg:#12291f; --ok-line:#235a40; --err-bg:#341a18; --err-line:#7a2f29;
+  --warn-bg:#2a2412; --top-bg:#3a2f0a; --top-ink:#f3d98a; --top-line:#7a6420; }
 *{box-sizing:border-box}
 html{font-size:15px}
 body{margin:0;background:var(--bg);color:var(--ink);font:400 1rem/1.45 var(--font);font-variant-numeric:tabular-nums}
@@ -78,14 +85,9 @@ main{max-width:1240px;margin:0 auto;padding:22px 20px 60px}
 #banner .in{max-width:1240px;margin:0 auto;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
 #banner .txt{flex:1;min-width:220px;font-weight:600}
 #banner .txt span{font-weight:400;color:var(--ink-2)}
-#banner.run{background:#e8f1fd;border-color:#b9d2f3}
-#banner.ok{background:#e6f5ee;border-color:#b5dfc9}
-#banner.err{background:#fdeceb;border-color:#f0b9b4}
-@media (prefers-color-scheme: dark){
-  #banner.run{background:#14233a;border-color:#27456f}
-  #banner.ok{background:#12291f;border-color:#235a40}
-  #banner.err{background:#341a18;border-color:#7a2f29}
-}
+#banner.run{background:var(--run-bg);border-color:var(--run-line)}
+#banner.ok{background:var(--ok-bg);border-color:var(--ok-line)}
+#banner.err{background:var(--err-bg);border-color:var(--err-line)}
 .bar{flex-basis:100%;height:6px;border-radius:3px;background:rgba(127,127,127,.25);overflow:hidden}
 .bar i{display:block;height:100%;background:var(--focus);border-radius:3px;transition:width .4s}
 .spin{width:18px;height:18px;border-radius:50%;border:3px solid rgba(127,127,127,.35);border-top-color:var(--focus);animation:sp .9s linear infinite;flex:none}
@@ -104,7 +106,7 @@ main{max-width:1240px;margin:0 auto;padding:22px 20px 60px}
 @media (prefers-reduced-motion:reduce){.fbar.kor i{animation:none}}
 .km b{font-size:1.02rem}
 .posbar{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;padding:6px 16px;font-size:.88rem;border-top:1px solid var(--line);background:var(--panel)}
-.posbar.anden{background:var(--warn-bg,#fff4d6)}
+.posbar.anden{background:var(--warn-bg)}
 .geo-res button.on{outline:2px solid var(--btn)}
 a.btn,label.btn{display:inline-block;text-decoration:none}
 .foot{max-width:1200px;margin:24px auto;padding:0 16px;word-break:break-all}
@@ -200,8 +202,15 @@ dialog form{padding:20px;display:grid;gap:14px}
 #chart svg{touch-action:pan-y}
 .ret-orig{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:.9rem;display:grid;gap:4px}
 .ret-orig .muted{font-size:.84rem}
-.badge.topkoeb{background:#fff3c4;color:#6b4e00;border-color:#e6c75a;font-weight:600}
-.r-ret{font-size:.8rem;margin-left:6px}
+.badge.topkoeb{background:var(--top-bg);color:var(--top-ink);border-color:var(--top-line);font-weight:600}
+.nytknap{position:relative}
+.nytknap .tal{display:inline-block;min-width:1.35em;padding:0 5px;margin-left:6px;border-radius:99px;background:var(--danger);color:var(--panel);font-size:.78rem;font-weight:700;text-align:center}
+.nyt-liste{list-style:none;margin:0;padding:0}
+.nyt-liste li{padding:10px 0;border-top:1px solid var(--line)}
+.nyt-liste li:first-child{border-top:0}
+.nyt-liste .ny{border-left:3px solid var(--focus);padding-left:10px}
+.nyt-liste .rad{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.r-ret{font-size:.8rem;margin-left:6px;color:var(--paper-ink)}
 
 /* telefon: tabeller bliver til kort, større trykflader, dialoger i fuld bredde */
 @media (max-width:700px){
@@ -246,7 +255,7 @@ body.android [data-do="afslut"]{display:none}
 <header class="top">
   <div class="brand">Tilbudsagent</div>
   <nav aria-label="Sider" id="nav"></nav>
-  <div class="status"><span id="sidste"></span><button class="btn" id="hent">Hent tilbud</button><button class="btn ghost small" data-do="afslut" title="Lukker Tilbudsagent helt">Afslut</button></div>
+  <div class="status"><span id="sidste"></span><button class="btn ghost small nytknap" id="nyt-knap" data-do="nyt" title="Nye ekstra gode tilbud">Nyt</button><button class="btn" id="hent">Hent tilbud</button><button class="btn ghost small" data-do="afslut" title="Lukker Tilbudsagent helt">Afslut</button></div>
 </header>
 <div id="banner" hidden role="status" aria-live="polite"></div>
 <div id="posbar" class="posbar"></div>
@@ -258,6 +267,7 @@ body.android [data-do="afslut"]{display:none}
 <dialog id="dlg-find"><form method="dialog" id="f-find"></form></dialog>
 <dialog id="dlg-pos"><form method="dialog" id="f-pos"></form></dialog>
 <dialog id="dlg-manuel"><form method="dialog" id="f-manuel"></form></dialog>
+<dialog id="dlg-nyt"><form method="dialog" id="f-nyt"></form></dialog>
 <dialog id="dlg-ret"><form method="dialog" id="f-ret"></form></dialog>
 <div id="toast" role="status"></div>
 
@@ -374,6 +384,8 @@ function renderTop(){
   $("#sidste").textContent = h.koerer ? "" : d.sidste_hentning ? "Sidst hentet " + dKort(d.sidste_hentning) : "Ikke hentet endnu";
   const b = $("#hent"); b.disabled = !!h.koerer; b.className = "btn" + (h.koerer ? " busy" : "");
   b.innerHTML = h.koerer ? '<span class="spin" aria-hidden="true"></span>Henter …' : "Hent tilbud";
+  const ny = d.nyt?.ulaest || 0;
+  $("#nyt-knap").innerHTML = "Nyt" + (ny ? `<span class="tal" aria-label="${ny} ulæste">${ny}</span>` : "");
   renderPos();
   renderBanner();
 }
@@ -415,6 +427,7 @@ setInterval(async () => {  // fanger automatisk hentning, der starter mens siden
   const h = await api("/api/hent/status").catch(() => null);
   if(h && h.koerer){ S.hent = h; doneMsg = null; renderTop(); poll(); }
 }, 30000);
+document.addEventListener("visibilitychange", () => { if(document.visibilityState === "visible" && tab === "indstillinger" && bro() && !draft) render(); });
 document.addEventListener("click", e => { if(e.target.closest("[data-dismiss]")){ doneMsg = null; renderBanner(); } });
 
 /* ---------- overblik ---------- */
@@ -752,6 +765,7 @@ function indstillingerView(){
       <td><button class="btn danger small" data-bdel="${esc(id)}">Fjern</button></td></tr>`; }).join("");
   const adrAendret = draft.adresse !== S.cfg.adresse || draft.tjek.lat !== S.cfg.tjek.lat || draft.tjek.lng !== S.cfg.tjek.lng;
   return `<div class="stack" style="max-width:900px">
+  ${udseendeKort()}
   <section class="card"><div class="card-head"><h2>Din hjemmeadresse</h2><p class="muted small">Bruges til at hente tilbud i dit område og som udgangspunkt for afstande. Skriv adressen, tryk Find, vælg den rigtige, og tryk så «Brug som hjemmeadresse». Adressen slås op hos OpenStreetMap.</p></div>
     ${anden ? `<p class="note" style="margin-bottom:12px"><span>Du beregner lige nu fra et andet sted (<b>${esc(S.position.navn.split(",").slice(0,2).join(","))}</b>). Hjemmeadressen herunder er ikke ændret.</span></p>` : ""}
     <div class="form"><label class="f">Adresse${adrAendret ? ' <span class="badge warn">ikke gemt endnu</span>' : ""}<span class="inl"><input type="text" data-p="adresse" value="${esc(c.adresse||"")}" placeholder="Vejnavn nr., postnummer by"><button class="btn ghost" id="geo" type="button">Find</button></span></label>
@@ -809,6 +823,40 @@ function maerkCeller(root){
 }
 if(/TilbudsagentAndroid/.test(navigator.userAgent)) document.body.classList.add("android");
 new MutationObserver(() => maerkCeller(document)).observe(document.body, {childList:true, subtree:true});
+function nytDialog(){
+  const n = S.dash.nyt || {liste:[], ulaest:0}, idag = S.dash.idag;
+  const rad = t => `<li class="${t.laest ? "" : "ny"}"><div class="rad"><b>${esc(t.vare)}</b><span>${kr(t.pris)} kr${t.ep != null ? ` · ${kr(t.ep)} kr/${esc(t.enhed)}` : ""}</span></div>
+    <div class="small muted">${esc(t.butik_navn)} · ${esc(t.tekst)}</div>
+    <div class="small">${esc(t.grund)}${t.rabat != null ? ` (${pct(t.rabat)})` : ""} · set ${dKort(t.set_ts.slice(0,10))}${t.til && t.til < idag ? " · <b>udløbet</b>" : t.til ? " · gælder til " + dKort(t.til) : ""}</div></li>`;
+  $("#f-nyt").innerHTML = `<h2>Nyt: ekstra gode tilbud</h2>
+    <p class="small muted" style="margin:6px 0 10px">Her lander de ekstra gode tilbud, hver gang en hentning finder nye. Grænsen sættes under Indstillinger.</p>
+    ${n.liste.length ? `<ul class="nyt-liste">${n.liste.map(rad).join("")}</ul>` : `<p class="empty">Ingen ekstra gode tilbud endnu. De dukker op her, når en hentning finder dem.</p>`}
+    <div class="dlg-actions"><button class="btn" value="luk">Luk</button></div>`;
+  $("#dlg-nyt").showModal();
+  if(n.ulaest) api("/api/nyt/laest", {}).then(() => load()).catch(() => {});
+}
+/* ---------- udseende (lys/mørk) og Android-baggrund ---------- */
+function hentTema(){ try { const t = localStorage.getItem("tema"); return t === "lys" || t === "moerk" ? t : "auto"; } catch(_){ return "auto"; } }
+function saetTema(t){
+  if(t === "lys" || t === "moerk") document.documentElement.dataset.tema = t; else delete document.documentElement.dataset.tema;
+  try { if(t === "auto") localStorage.removeItem("tema"); else localStorage.setItem("tema", t); } catch(_){}
+}
+const bro = () => (typeof window.AndroidApp !== "undefined" ? window.AndroidApp : null);
+function broStatus(){ try { return JSON.parse(bro().status()); } catch(_){ return null; } }
+function udseendeKort(){
+  const t = hentTema(), b = bro(), st = b ? broStatus() : null;
+  const tema = `<div class="inl" role="radiogroup" aria-label="Tema">${[["auto","Automatisk (følger telefonen/pc'en)"],["lys","Lys"],["moerk","Mørk"]].map(([k,n]) =>
+    `<label class="small inl"><input type="radio" name="tema" data-tema="${k}" ${t===k?"checked":""}> ${n}</label>`).join("")}</div>`;
+  const and = st ? `<div class="form" style="margin-top:14px"><h3>Baggrundshentning og notifikationer</h3>
+    <p class="small muted">Appen kan selv hente tilbud i baggrunden og give en besked, når der er nye ekstra gode tilbud. Android bestemmer det præcise tidspunkt, så beskeden kan komme op til et par timer forsinket, især når telefonen sparer strøm.</p>
+    <label class="small inl"><input type="checkbox" data-bg="aktiv" ${st.baggrund?"checked":""}> Hent i baggrunden og giv besked om ekstra gode tilbud</label>
+    <label class="f small">Hvor ofte<select data-bg="timer">${[6,12,24].map(h=>`<option value="${h}" ${st.timer===h?"selected":""}>Cirka hver ${h}. time</option>`).join("")}</select></label>
+    <div class="inl">${st.notif ? '<span class="badge in">Notifikationer er tilladt</span>' : '<button class="btn small" type="button" data-bg="tilladelse">Tillad notifikationer</button>'}
+      <button class="btn ghost small" type="button" data-bg="test">Send en testbesked</button>
+      <button class="btn ghost small" type="button" data-bg="nu">Tjek nu i baggrunden</button></div>
+    ${st.baggrund && !st.notif ? '<p class="small muted">Uden tilladelse hentes tilbud stadig, og de nye står under «Nyt» i appen, men du får ingen besked.</p>' : ""}</div>` : "";
+  return `<section class="card"><div class="card-head"><h2>Udseende</h2></div><div class="form">${tema}${and}</div></section>`;
+}
 function render(){
   const v = $("#view");
   v.innerHTML = tab === "overblik" ? overblik() : tab === "tilbud" ? tilbudView() : tab === "varer" ? varerView() : indstillingerView();
@@ -816,6 +864,14 @@ function render(){
 }
 document.addEventListener("click", e => {
   if(e.target.closest("#se-top")){ filt = {vare:"",butik:"",gruppe:"",maxep:"",top:true,tur:false,q:"",sort:"rabat"}; tab = "tilbud"; render(); return; }
+  const bk = e.target.closest("button[data-bg]");
+  if(bk && bro()){
+    const h = bk.dataset.bg;
+    if(h === "tilladelse"){ bro().tilladelse(); setTimeout(() => { if(tab === "indstillinger") render(); }, 4000); }
+    else if(h === "test"){ if(broStatus()?.notif) bro().test(); else toast("Tillad først notifikationer.", true); }
+    else if(h === "nu"){ bro().nu(); toast("Henter i baggrunden. Nye ekstra gode tilbud står under «Nyt», og du får en besked."); }
+    return;
+  }
   const t = e.target.closest("[data-do],[data-tab-go],[data-vare],[data-ret-t],[data-ret-fortryd],[data-bdel],#badd,#gem,#fortryd,#geo,[data-geo],#p-find,#p-ok,#p-annuller,[data-pgeo],[data-pos-sen],#find-luk,#hjem-gem,#p-gps"); if(!t) return;
   if(t.id === "p-gps"){
     t.disabled = true; t.textContent = "Finder position …";
@@ -832,6 +888,7 @@ document.addEventListener("click", e => {
   if(t.dataset.retFortryd){ act(() => api("/api/ret/slet", {id:+t.dataset.retFortryd}), "Rettelsen er fortrudt."); return; }
   switch(t.dataset.do){
     case "hent": $("#hent").click(); return;
+    case "nyt": nytDialog(); return;
     case "vare-ny": vareDialog(null); return;
     case "manuel": manuelDialog(); return;
     case "pos-dlg": posDialog(); return;
@@ -886,6 +943,14 @@ document.addEventListener("input", e => {
 });
 document.addEventListener("change", e => {
   const el = e.target;
+  if(el.dataset.tema){ saetTema(el.dataset.tema); return; }
+  if(el.dataset.bg && bro()){
+    const st = broStatus() || {baggrund:false, timer:12, notif:false};
+    const aktiv = el.dataset.bg === "aktiv" ? el.checked : st.baggrund, timer = el.dataset.bg === "timer" ? +el.value : st.timer;
+    bro().saet(aktiv, timer);
+    if(aktiv && !st.notif) toast("Tryk «Tillad notifikationer», ellers får du ingen besked.");
+    render(); return;
+  }
   if(["vare","butik","gruppe","top","tur","sort"].includes(el.dataset.f)){ filt[el.dataset.f] = el.type === "checkbox" ? el.checked : el.value; render(); }
   if(el.dataset.sunk && draft){ const s = new Set(draft.koersel.sunk_zoner); el.checked ? s.add(el.dataset.sunk) : s.delete(el.dataset.sunk); draft.koersel.sunk_zoner = [...s]; }
   if(el.dataset.fast && draft){ const b = draft.butikker[el.dataset.fast], e = (S.eff_butikker || {})[el.dataset.fast] || {};

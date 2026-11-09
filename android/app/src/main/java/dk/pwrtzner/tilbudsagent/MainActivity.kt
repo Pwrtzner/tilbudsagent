@@ -13,6 +13,7 @@ import android.view.Gravity
 import android.view.ViewGroup
 import android.webkit.ConsoleMessage
 import android.webkit.GeolocationPermissions
+import android.webkit.JavascriptInterface
 import android.webkit.URLUtil
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
@@ -23,8 +24,7 @@ import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import android.widget.TextView
 import android.widget.Toast
-import com.chaquo.python.Python
-import com.chaquo.python.android.AndroidPlatform
+import org.json.JSONObject
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
@@ -40,6 +40,7 @@ class MainActivity : Activity() {
         private const val URL_BASE = "http://127.0.0.1:$PORT/"
         private const val REQ_LOKATION = 11
         private const val REQ_FIL = 12
+        private const val REQ_NOTIF = 13
 
         @Volatile private var pythonStartet = false
     }
@@ -65,7 +66,9 @@ class MainActivity : Activity() {
         setContentView(rod)
         web.visibility = android.view.View.INVISIBLE
         opsaetWeb()
+        web.addJavascriptInterface(Bro(), "AndroidApp")
         startPython()
+        if (intent?.getBooleanExtra("worker_test", false) == true) Planlaeg.nu(this)  // bruges af røgtesten
         ventPaaServer()
     }
 
@@ -117,15 +120,11 @@ class MainActivity : Activity() {
     private fun startPython() {
         if (pythonStartet) return
         pythonStartet = true
-        val res = File(filesDir, "res").apply { mkdirs() }
-        assets.list("res")?.forEach { navn ->  // kopieres ved hver start, så opdateringer slår igennem
-            assets.open("res/$navn").use { inp -> File(res, navn).outputStream().use { inp.copyTo(it) } }
-        }
-        val data = File(filesDir, "data").apply { mkdirs() }
-        if (!Python.isStarted()) Python.start(AndroidPlatform(this))
+        val (res, data) = Opsaet.mapper(this)  // kopieres ved hver start, så opdateringer slår igennem
+        val py = Opsaet.python(this)
         Thread {
             try {
-                Python.getInstance().getModule("android_main")
+                py.getModule("android_main")
                     .callAttr("start", res.absolutePath, data.absolutePath, PORT)
             } catch (e: Throwable) {
                 android.util.Log.e("Tilbudsagent", "Python stoppede", e)
@@ -133,6 +132,40 @@ class MainActivity : Activity() {
                 runOnUiThread { status.text = "Appen kunne ikke starte:\n${e.message}" }
             }
         }.start()
+    }
+
+    /** Funktioner, siden kan kalde (window.AndroidApp): baggrundshentning og notifikationer. */
+    inner class Bro {
+        @JavascriptInterface
+        fun status(): String {
+            val p = getSharedPreferences("indst", MODE_PRIVATE)
+            return JSONObject().put("baggrund", p.getBoolean("baggrund", false)).put("timer", p.getInt("timer", 12))
+                .put("notif", Meldinger.tilladt(this@MainActivity)).toString()
+        }
+
+        @JavascriptInterface
+        fun saet(aktiv: Boolean, timer: Int) { Planlaeg.saet(this@MainActivity, aktiv, timer.coerceIn(6, 48)) }
+
+        @JavascriptInterface
+        fun tilladelse() {
+            runOnUiThread {
+                if (android.os.Build.VERSION.SDK_INT >= 33) {
+                    requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQ_NOTIF)
+                } else {
+                    startActivity(Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                        .putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, packageName))
+                }
+            }
+        }
+
+        @JavascriptInterface
+        fun test() {
+            Meldinger.send(this@MainActivity, "Test fra Tilbudsagent", "Sådan ser en besked om et ekstra godt tilbud ud.",
+                listOf("Kyllingebryst 55,50 kr/kg, Netto (−44 %)", "Bananer 9,00 kr/kg, REMA 1000 (−55 %)"))
+        }
+
+        @JavascriptInterface
+        fun nu() { Planlaeg.nu(this@MainActivity) }
     }
 
     private fun serverKlar(): Boolean = try {

@@ -40,7 +40,7 @@ try:
 except ModuleNotFoundError:  # Python 3.10: pip install tomli
     import tomli as tomllib
 
-VERSION = "0.9.0"
+VERSION = "0.10.0"
 FROSSET = getattr(sys, "frozen", False)  # True når appen er pakket som .exe
 # RES: hvor startværdier og app.html ligger. DATA: hvor brugerens database og log gemmes.
 RES = Path(os.environ.get("TILBUDSAGENT_RES") or getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
@@ -133,6 +133,10 @@ def connect(db: Path) -> sqlite3.Connection:
         PRIMARY KEY(pos, butik))""")
     # Dine rettelser af tilbud. Ligger i en egen tabel, så de ikke overskrives, når tilbuddet hentes igen
     # (også hvis det udgives påny med et nyt Tjek-id: `moenster` genkender samme butik, tekst og Tjek-pris).
+    con.execute("""CREATE TABLE IF NOT EXISTS nyt(
+        id INTEGER PRIMARY KEY, set_ts TEXT NOT NULL, vare_id TEXT NOT NULL, vare TEXT, butik TEXT NOT NULL, butik_navn TEXT,
+        tjek_id TEXT NOT NULL, tekst TEXT, pris REAL, ep REAL, enhed TEXT, rabat REAL, grund TEXT, til TEXT,
+        laest INTEGER NOT NULL DEFAULT 0, notificeret INTEGER NOT NULL DEFAULT 0, UNIQUE(vare_id, butik, tjek_id))""")
     con.execute("""CREATE TABLE IF NOT EXISTS ret(
         id INTEGER PRIMARY KEY, vare_id TEXT NOT NULL, butik TEXT NOT NULL, tjek_id TEXT NOT NULL, moenster TEXT,
         handling TEXT NOT NULL, pris REAL, foer_pris REAL, maengde REAL, enhedspris REAL,

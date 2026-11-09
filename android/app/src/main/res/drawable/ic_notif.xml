@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Lille prisskilt til notifikationer (ensfarvet, systemet farver det) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M3,6 L14,6 L21,12 L14,18 L3,18 Z M7,10.5 A1.5,1.5 0 1,0 7.01,10.5 Z"
+        android:fillType="evenOdd" />
+</vector>

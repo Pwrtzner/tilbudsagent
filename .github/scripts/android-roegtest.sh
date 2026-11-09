@@ -30,6 +30,22 @@ print('OK: version', s['version'], '|', len(s['varer']), 'varer |', len(s['cfg']
 "
 curl -fs http://127.0.0.1:18765/ | grep -q "Tilbudsagent" || { echo "app.html mangler"; exit 1; }
 
+# baggrundsjobbet (WorkManager kører Python i en Worker): start ét job og vent på dets logbesked
+adb logcat -c
+adb shell am start -n dk.pwrtzner.tilbudsagent/.MainActivity --ez worker_test true
+kort=0
+for i in $(seq 1 60); do
+  if adb logcat -d -s Tilbudsagent:I | grep -q "worker færdig"; then kort=1; break; fi
+  sleep 5
+done
+if [ "$kort" != 1 ]; then
+  echo "Baggrundsjobbet kørte ikke på 5 minutter. Logcat:"
+  adb logcat -d | grep -iE "python|tilbudsagent|workmanager|AndroidRuntime|FATAL" | tail -80
+  exit 1
+fi
+adb logcat -d -s Tilbudsagent:I | grep "worker færdig" | head -2
+curl -fs http://127.0.0.1:18765/api/state | python3 -c "import json,sys; s=json.load(sys.stdin); assert 'nyt' in s['dash']; print('OK: feed i state')"
+
 # kan appen hente fra internettet (Overpass/Tjek) med Androids certifikater? Kun logget, ikke krævet.
 curl -fs -XPOST http://127.0.0.1:18765/api/geokod -H 'Content-Type: application/json' -d '{"q":"Rådhuspladsen 1, København"}' | head -c 300; echo
 

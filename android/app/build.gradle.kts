@@ -78,3 +78,7 @@ chaquopy {
         getByName("main") { srcDir(genPython) }
     }
 }
+
+dependencies {
+    implementation("androidx.work:work-runtime-ktx:2.9.1")
+}

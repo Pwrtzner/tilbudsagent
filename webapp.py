@@ -14,7 +14,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import webbrowser
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from types import SimpleNamespace
@@ -105,7 +105,7 @@ def dashboard(cfg, varer, con, idag: date) -> dict:
                  koersel=[dict(l) for l in kl], koersel_i_alt=sum(l["kr"] for l in kl)),
         afviste=[dict(zone=a["zone"], butikker=[B[s]["navn"] for s in a["butikker"]],
                       ekstra_sav=a["ekstra_sav"], ekstra_cost=a["ekstra_cost"]) for a in afviste],
-        lager=lager, tilbud=tilbud, rettelser=ret_liste(con, cfg, varer),
+        lager=lager, tilbud=tilbud, rettelser=ret_liste(con, cfg, varer), nyt=nyt_liste(con),
         uafklaret=[dict(vare=o["vare"]["navn"], butik=B.get(o["butik"], {}).get("navn", o["butik"]),
                         tekst=o["overskrift"], pris=o["pris"]) for o in uafklaret[:8]],
         varestatus=[dict(id=i["vare"]["id"], norm=i["norm"], kilde=i["kilde"], bund=i["bund"], n=i["n"],
@@ -276,7 +276,7 @@ def geokod(q: str) -> list[dict]:
     return [dict(navn=d["display_name"], lat=float(d["lat"]), lng=float(d["lon"])) for d in data]
 
 
-def start_hent() -> dict:
+def start_hent(baggrund: bool = False) -> dict:
     st = APP["hent"]
     with LOCK:
         if st.get("koerer"):
@@ -299,6 +299,10 @@ def start_hent() -> dict:
                 for kk in ("nye", "raa_nye", "fejl", "kald"):
                     res[kk] = res.get(kk, 0) + r2.get(kk, 0)
             st["resultat"] = res
+            try:
+                st["topkoeb_nye"] = opdater_nyt(con, cfg, varer, notificeret=0 if baggrund else 1)
+            except Exception as e:  # feedet må aldrig vælte en hentning
+                print(f"Nyt-feed fejlede: {e}", file=sys.stderr)
             if st["resultat"]["fejl"] < max(1, st["resultat"].get("kald", 1)):  # mindst ét kald lykkedes
                 con.execute("INSERT OR REPLACE INTO kv(key,value) VALUES('sidste_hent_ts',?)", (datetime.now().isoformat(timespec="seconds"),))
                 con.commit()
@@ -310,6 +314,56 @@ def start_hent() -> dict:
             con.close()
     threading.Thread(target=job, daemon=True).start()
     return st
+
+
+# -------------------------------------------------------------- nyt-feed ---
+def opdater_nyt(con, cfg, varer, notificeret: int = 1) -> int:
+    """Lægger nye ekstra gode tilbud («topkøb») i feedet. Første gang markeres de eksisterende som læst, så du
+    ikke får en lang liste af gamle tilbud. Returnerer antal nye."""
+    nu = [t for t in dashboard(geo.effektiv(con, cfg), varer, con, date.today())["tilbud"] if t["topkoeb"]]
+    foerste = not con.execute("SELECT 1 FROM kv WHERE key='nyt_init'").fetchone()
+    ts, nye = datetime.now().isoformat(timespec="seconds"), 0
+    for t in nu:
+        c = con.execute("INSERT OR IGNORE INTO nyt(set_ts,vare_id,vare,butik,butik_navn,tjek_id,tekst,pris,ep,enhed,rabat,grund,til,laest,notificeret) "
+                        "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        (ts, t["vare_id"], t["vare"], t["butik"], t["butik_navn"], t["tjek_id"], t["tekst"], t["pris"], t["ep"], t["enhed"],
+                         t["rabat"], ", ".join(t["top_grunde"]), t["til"], int(foerste), 1 if foerste else int(notificeret)))
+        nye += c.rowcount if not foerste else 0
+    if foerste:
+        con.execute("INSERT OR REPLACE INTO kv(key,value) VALUES('nyt_init','1')")
+    con.execute("DELETE FROM nyt WHERE set_ts < ?", ((datetime.now() - timedelta(days=45)).isoformat(timespec="seconds"),))
+    con.commit()
+    return nye
+
+
+def nyt_liste(con) -> dict:
+    rows = [dict(r) for r in con.execute("SELECT * FROM nyt ORDER BY set_ts DESC, rabat DESC LIMIT 40")]
+    ulaest = con.execute("SELECT COUNT(*) n FROM nyt WHERE laest=0").fetchone()["n"]
+    return dict(liste=rows, ulaest=ulaest)
+
+
+def baggrundshent(vent_sek: int = 1500) -> dict:
+    """Bruges af Android-appens baggrundsjob: hent tilbud, find nye topkøb og returnér dem, som endnu ikke er meldt."""
+    con = ta.connect(APP["db"])
+    try:
+        cfg = ta.get_cfg(con, APP["config"])
+        if not (cfg["tjek"].get("lat") or cfg["tjek"].get("lng")):
+            return dict(fejl="Ingen adresse er sat endnu.", nye=[])
+    finally:
+        con.close()
+    st = start_hent(baggrund=True)
+    slut = time.time() + vent_sek
+    while st.get("koerer") and time.time() < slut:
+        time.sleep(2)
+    con = ta.connect(APP["db"])
+    try:
+        rows = [dict(r) for r in con.execute("SELECT * FROM nyt WHERE notificeret=0 AND laest=0 ORDER BY rabat DESC")]
+        con.execute("UPDATE nyt SET notificeret=1 WHERE notificeret=0")
+        con.commit()
+        res = st.get("resultat") or {}
+        return dict(nye=rows, fejl=st.get("fejl") or (f"{res.get('fejl')} søgninger fejlede" if res.get("fejl") and not res.get("nye") else ""))
+    finally:
+        con.close()
 
 
 # ------------------------------------------------- eksport / import / fejlrapport ---
@@ -619,6 +673,9 @@ class Handler(BaseHTTPRequestHandler):
                     ta.save_vare(con, v)
                     ta.ryd_obs(con, v)  # fjern gemte priser der ikke passer til de nye regler
                     ta.genopbyg(con, cfg, [v])  # og find tilbud vi allerede har set, som nu passer
+                elif u == "/api/nyt/laest":
+                    con.execute("UPDATE nyt SET laest=1, notificeret=1 WHERE laest=0 OR notificeret=0")
+                    con.commit()
                 elif u == "/api/vare/slet":
                     con.execute("DELETE FROM vare WHERE id=?", (str(b.get("id", "")),))
                     con.execute("DELETE FROM ret WHERE vare_id=?", (str(b.get("id", "")),))

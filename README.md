@@ -80,6 +80,12 @@ Henter ugens tilbud fra Tjek (eTilbudsavis), gemmer dem i SQLite og anbefaler, h
 - **Signering:** APK'en signeres med en fast nøgle fra GitHub-hemmelighederne `KEYSTORE_BASE64` og `KEYSTORE_KODE`. Samme nøgle skal bruges hver gang; ellers kan telefonen ikke opdatere appen, kun geninstallere den.
 - Kræver Android 10 eller nyere. Baggrundshentning er ikke pålidelig på Android: appen henter, når den åbnes og der er gået over et døgn.
 
+### v0.10.0
+
+- **Nyt-feed.** Knappen «Nyt» øverst viser de ekstra gode tilbud, hver hentning har fundet siden sidst, med en tæller for de ulæste. Gælder pc og Android.
+- **Baggrundshentning og notifikationer (Android).** Under Indstillinger → Udseende kan du slå «Hent i baggrunden» til (cirka hver 6., 12. eller 24. time) og tillade notifikationer. Appen henter så selv og giver en besked, når der er nye topkøb. Android bestemmer det præcise tidspunkt. Der er knapper til at sende en testbesked og til at tjekke med det samme. Kræver, at hjemmeadressen er sat.
+- **Lys/mørk tema.** Under Indstillinger → Udseende: Automatisk (følger enheden), Lys eller Mørk. Valget huskes på enheden.
+
 ### v0.9.0
 
 - **Otte nye startvarer:** agurk, tomater, iceberg, æbler, pærer, bananer, Cheasy skyr og yoghurt. De lægges i din varebeholdning én gang; varer, du selv har slettet eller rettet, røres ikke. Normalpris er tom, så udfyld den under Varer for præcise rabatter.
