@@ -68,8 +68,18 @@ class MainActivity : Activity() {
         opsaetWeb()
         web.addJavascriptInterface(Bro(), "AndroidApp")
         startPython()
-        if (intent?.getBooleanExtra("worker_test", false) == true) Planlaeg.nu(this)  // bruges af røgtesten
+        roegtestKrog(intent)
         ventPaaServer()
+    }
+
+    // bruges af røgtesten: start ét baggrundsjob med det samme
+    private fun roegtestKrog(i: Intent?) {
+        if (i?.getBooleanExtra("worker_test", false) == true) Planlaeg.nu(this)
+    }
+
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        roegtestKrog(intent)
     }
 
     private fun opsaetWeb() {
