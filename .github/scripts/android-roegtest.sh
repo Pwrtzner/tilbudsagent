@@ -21,9 +21,13 @@ fi
 
 curl -fs http://127.0.0.1:18765/api/ping; echo
 STATE=$(# forgrundstjenesten, der holder en hentning i live: start, og den skal lukke sig selv, når der ikke kører noget
+adb shell am force-stop dk.pwrtzner.tilbudsagent
+sleep 2
 adb logcat -c
-adb shell am start-foreground-service -n dk.pwrtzner.tilbudsagent/.HentTjeneste
-sleep 30
+adb shell am start -n dk.pwrtzner.tilbudsagent/.MainActivity --ez tjeneste_test true
+sleep 12
+if ! adb shell dumpsys activity services dk.pwrtzner.tilbudsagent | grep -q "HentTjeneste"; then echo "Forgrundstjenesten startede ikke."; adb logcat -d | grep -iE "tilbudsagent|FATAL|foreground" | tail -30; exit 1; fi
+sleep 40
 if adb shell dumpsys activity services dk.pwrtzner.tilbudsagent | grep -q "HentTjeneste"; then
   echo "Forgrundstjenesten lukkede ikke sig selv."; adb shell dumpsys activity services dk.pwrtzner.tilbudsagent | grep -A6 HentTjeneste | head -20; exit 1
 fi

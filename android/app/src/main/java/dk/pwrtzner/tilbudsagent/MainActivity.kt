@@ -75,6 +75,7 @@ class MainActivity : Activity() {
     // bruges af røgtesten: start ét baggrundsjob med det samme
     private fun roegtestKrog(i: Intent?) {
         if (i?.getBooleanExtra("worker_test", false) == true) Planlaeg.nu(this)
+        if (i?.getBooleanExtra("tjeneste_test", false) == true) startForegroundService(Intent(this, HentTjeneste::class.java))
     }
 
     override fun onNewIntent(intent: Intent?) {
