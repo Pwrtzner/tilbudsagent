@@ -27,3 +27,9 @@ def hent_baggrund(res_dir: str, data_dir: str) -> str:
     ta.get_varer(con, webapp.APP["varer"])
     con.close()
     return json.dumps(webapp.baggrundshent(), ensure_ascii=False)
+
+
+def hent_koerer() -> bool:
+    """Bruges af forgrundstjenesten: kører der en hentning lige nu?"""
+    import webapp
+    return bool(webapp.APP["hent"].get("koerer"))

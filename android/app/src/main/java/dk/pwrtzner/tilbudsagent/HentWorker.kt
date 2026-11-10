@@ -22,7 +22,13 @@ class HentWorker(ctx: Context, p: WorkerParameters) : Worker(ctx, p) {
             val json = Opsaet.python(applicationContext).getModule("android_main")
                 .callAttr("hent_baggrund", res.absolutePath, data.absolutePath).toString()
             Log.i("Tilbudsagent", "worker færdig: ${json.take(300)}")
-            val nye = JSONObject(json).getJSONArray("nye")
+            val svar = JSONObject(json)
+            val nye = svar.getJSONArray("nye")
+            val fejlTekst = svar.optString("fejl", "")
+            applicationContext.getSharedPreferences("indst", Context.MODE_PRIVATE).edit()
+                .putLong("sidste_tid", System.currentTimeMillis())
+                .putString("sidste_tekst", if (fejlTekst.isNotEmpty()) fejlTekst else if (nye.length() == 0) "ingen nye ekstra gode tilbud" else "${nye.length()} nye ekstra gode tilbud")
+                .apply()
             if (nye.length() > 0) {
                 val dk = Locale("da", "DK")
                 val linjer = (0 until nye.length()).map {
@@ -37,6 +43,9 @@ class HentWorker(ctx: Context, p: WorkerParameters) : Worker(ctx, p) {
             Result.success()
         } catch (e: Throwable) {
             Log.e("Tilbudsagent", "worker fejlede", e)
+            applicationContext.getSharedPreferences("indst", Context.MODE_PRIVATE).edit()
+                .putLong("sidste_tid", System.currentTimeMillis())
+                .putString("sidste_tekst", "fejl: ${e.message ?: e.javaClass.simpleName}").apply()
             Result.success()  // næste planlagte kørsel prøver igen
         }
     }

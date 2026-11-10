@@ -20,7 +20,16 @@ if [ "$ok" != 1 ]; then
 fi
 
 curl -fs http://127.0.0.1:18765/api/ping; echo
-STATE=$(curl -fs http://127.0.0.1:18765/api/state) || { echo "/api/state fejlede"; exit 1; }
+STATE=$(# forgrundstjenesten, der holder en hentning i live: start, og den skal lukke sig selv, når der ikke kører noget
+adb logcat -c
+adb shell am start-foreground-service -n dk.pwrtzner.tilbudsagent/.HentTjeneste
+sleep 30
+if adb shell dumpsys activity services dk.pwrtzner.tilbudsagent | grep -q "HentTjeneste"; then
+  echo "Forgrundstjenesten lukkede ikke sig selv."; adb shell dumpsys activity services dk.pwrtzner.tilbudsagent | grep -A6 HentTjeneste | head -20; exit 1
+fi
+if adb logcat -d | grep -E "FATAL EXCEPTION|hent-tjeneste fejlede"; then echo "Forgrundstjenesten fejlede."; exit 1; fi
+echo "OK: forgrundstjeneste startede og lukkede igen"
+curl -fs http://127.0.0.1:18765/api/state) || { echo "/api/state fejlede"; exit 1; }
 echo "$STATE" | python3 -c "
 import json,sys
 s=json.load(sys.stdin)

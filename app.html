@@ -170,7 +170,9 @@ tr.click:hover td{background:var(--line-2)}
 
 /* formularer */
 [hidden]{display:none !important}
-.form{display:grid;gap:14px}
+.form{display:grid;grid-template-columns:minmax(0,1fr);gap:14px}
+.form>*,.card{min-width:0}
+.inl:has(button),.inl:has(a.btn),.inl:has(.badge),.inl:has([type=radio]){flex-wrap:wrap}
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 .row3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
 @media (max-width:640px){.row2,.row3{grid-template-columns:1fr}}
@@ -219,6 +221,11 @@ dialog form{padding:20px;display:grid;gap:14px}
   .top{padding-left:max(16px,env(safe-area-inset-left));padding-right:max(16px,env(safe-area-inset-right));padding-top:max(8px,env(safe-area-inset-top))}
   .brand{font-size:1.05rem}
   .status #sidste{display:none}
+  .stick{display:contents}
+  .top{position:sticky;top:0;z-index:5}
+  #banner .lang{display:none}
+  #banner .txt{min-width:0;font-size:.95rem}
+  select{max-width:100%}
   .btn{min-height:44px;padding:10px 16px}
   .btn.small{min-height:40px;padding:8px 12px}
   nav button{min-height:44px}
@@ -397,7 +404,7 @@ function renderBanner(){
     const p = h.i_alt ? Math.round((h.gjort || 0) / h.i_alt * 100) : 0;
     b.hidden = false; b.className = "run";
     b.innerHTML = `<div class="in"><span class="spin" aria-hidden="true"></span><div class="txt">Henter tilbud fra Tjek …
-      <span>søgning ${h.gjort || 0} af ${h.i_alt || "?"}${h.nu ? " («" + esc(h.nu) + "»)" : ""} · ${h.nye || 0} nye tilbud fundet. Det tager typisk et par minutter, så lad siden stå åben.</span></div>
+      <span>søgning ${h.gjort || 0} af ${h.i_alt || "?"}${h.nu ? " («" + esc(h.nu) + "»)" : ""} · ${h.nye || 0} nye tilbud fundet. <span class="lang"> Det tager typisk et par minutter, så lad siden stå åben.</span></span></div>
       <div class="bar"><i style="width:${p}%"></i></div></div>`;
   } else if(doneMsg){
     b.hidden = false; b.className = doneMsg.type;
@@ -407,6 +414,7 @@ function renderBanner(){
 $("#nav").addEventListener("click", e => { const b = e.target.closest("button[data-tab]"); if(b){ tab = b.dataset.tab; draft = null; location.hash = tab; renderTop(); render(); window.scrollTo(0,0);} });
 $("#hent").addEventListener("click", async () => {
   try{ await api("/api/hent", {}); }catch(e){ return toast(e.message, true); }
+  try{ bro() && bro().hold(); }catch(_){}
   S.hent = {koerer:true, gjort:0, i_alt:0, nye:0}; doneMsg = null; renderTop(); poll();
 });
 async function poll(){
@@ -855,6 +863,9 @@ function udseendeKort(){
     <div class="inl">${st.notif ? '<span class="badge in">Notifikationer er tilladt</span>' : '<button class="btn small" type="button" data-bg="tilladelse">Tillad notifikationer</button>'}
       <button class="btn ghost small" type="button" data-bg="test">Send en testbesked</button>
       <button class="btn ghost small" type="button" data-bg="nu">Tjek nu i baggrunden</button></div>
+    <p class="small muted">${st.sidste ? "Sidste kørsel i baggrunden: " + new Date(st.sidste).toLocaleString("da-DK", {weekday:"short", day:"numeric", month:"short", hour:"2-digit", minute:"2-digit"}) + " (" + esc(st.sidste_tekst || "færdig") + ")." : "Baggrundsjobbet har ikke kørt endnu."}</p>
+    ${st.baggrund && !st.batteri ? `<div class="inl"><button class="btn small" type="button" data-bg="batteri">Undtag fra batterisparing</button></div>
+      <p class="small muted">Mange telefoner stopper apps i baggrunden for at spare strøm. Undtager du Tilbudsagent, kører jobbet mere pålideligt.</p>` : ""}
     ${st.baggrund && !st.notif ? '<p class="small muted">Uden tilladelse hentes tilbud stadig, og de nye står under «Nyt» i appen, men du får ingen besked.</p>' : ""}</div>` : "";
   return `<section class="card"><div class="card-head"><h2>Udseende</h2></div><div class="form">${tema}${and}</div></section>`;
 }
@@ -870,6 +881,7 @@ document.addEventListener("click", e => {
     const h = bk.dataset.bg;
     if(h === "tilladelse"){ bro().tilladelse(); setTimeout(() => { if(tab === "indstillinger") render(); }, 4000); }
     else if(h === "test"){ if(broStatus()?.notif) bro().test(); else toast("Tillad først notifikationer.", true); }
+    else if(h === "batteri"){ bro().batteri(); setTimeout(() => { if(tab === "indstillinger") render(); }, 4000); }
     else if(h === "nu"){ bro().nu(); toast("Henter i baggrunden. Nye ekstra gode tilbud står under «Nyt», og du får en besked."); }
     return;
   }

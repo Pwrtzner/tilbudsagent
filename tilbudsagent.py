@@ -40,7 +40,7 @@ try:
 except ModuleNotFoundError:  # Python 3.10: pip install tomli
     import tomli as tomllib
 
-VERSION = "0.10.1"
+VERSION = "0.10.2"
 FROSSET = getattr(sys, "frozen", False)  # True når appen er pakket som .exe
 # RES: hvor startværdier og app.html ligger. DATA: hvor brugerens database og log gemmes.
 RES = Path(os.environ.get("TILBUDSAGENT_RES") or getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))

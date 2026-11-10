@@ -80,6 +80,11 @@ Henter ugens tilbud fra Tjek (eTilbudsavis), gemmer dem i SQLite og anbefaler, h
 - **Signering:** APK'en signeres med en fast nøgle fra GitHub-hemmelighederne `KEYSTORE_BASE64` og `KEYSTORE_KODE`. Samme nøgle skal bruges hver gang; ellers kan telefonen ikke opdatere appen, kun geninstallere den.
 - Kræver Android 10 eller nyere. Baggrundshentning er ikke pålidelig på Android: appen henter, når den åbnes og der er gået over et døgn.
 
+### v0.10.2
+
+- **Mobil:** Felter og knapper på Indstillinger holder sig nu inden for kortene. Den lange «Henter tilbud»-bjælke fylder kun et par linjer, og kun den øverste bjælke med faner følger med ned.
+- **Hentning i baggrunden (Android):** Når du trykker «Hent tilbud», kører en synlig notifikation («Henter tilbud …») så længe hentningen varer, så Android ikke sætter appen på pause, hvis du skifter app eller låser skærmen. Under Indstillinger → Udseende står, hvornår baggrundsjobbet sidst kørte og hvad det fandt, og der er en knap til at undtage appen fra batterisparing.
+
 ### v0.10.1
 
 - **Indstillinger:** Tal kan skrives med komma (fx 2,5). Hvis et felt er forkert eller tomt, står fejlen nu som en rød besked lige over «Gem indstillinger», til du retter feltet, i stedet for en kort besked, der forsvinder.

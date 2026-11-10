@@ -150,7 +150,10 @@ class MainActivity : Activity() {
         fun status(): String {
             val p = getSharedPreferences("indst", MODE_PRIVATE)
             return JSONObject().put("baggrund", p.getBoolean("baggrund", false)).put("timer", p.getInt("timer", 12))
-                .put("notif", Meldinger.tilladt(this@MainActivity)).toString()
+                .put("notif", Meldinger.tilladt(this@MainActivity))
+                .put("batteri", getSystemService(android.os.PowerManager::class.java).isIgnoringBatteryOptimizations(packageName))
+                .put("sidste", p.getLong("sidste_tid", 0L)).put("sidste_tekst", p.getString("sidste_tekst", "") ?: "")
+                .toString()
         }
 
         @JavascriptInterface
@@ -175,7 +178,28 @@ class MainActivity : Activity() {
         }
 
         @JavascriptInterface
-        fun nu() { Planlaeg.nu(this@MainActivity) }
+        fun nu() { Planlaeg.nu(this@MainActivity); hold() }
+
+        /** Holder appen vågen, mens en hentning kører (kaldes, når du trykker «Hent tilbud»). */
+        @JavascriptInterface
+        fun hold() {
+            runOnUiThread {
+                try { startForegroundService(Intent(this@MainActivity, HentTjeneste::class.java)) }
+                catch (e: Exception) { android.util.Log.w("Tilbudsagent", "kunne ikke starte hent-tjeneste", e) }
+            }
+        }
+
+        @JavascriptInterface
+        fun batteri() {
+            runOnUiThread {
+                try {
+                    startActivity(Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+                        .setData(android.net.Uri.parse("package:$packageName")))
+                } catch (e: Exception) {
+                    startActivity(Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+                }
+            }
+        }
     }
 
     private fun serverKlar(): Boolean = try {
