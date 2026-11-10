@@ -742,7 +742,7 @@ function indstillingerView(){
   if(!draft) draft = JSON.parse(JSON.stringify(S.cfg));
   const c = draft, k = c.koersel, zoner = [...new Set(Object.values(c.butikker).map(b => b.zone))];
   const inp = (path, o={}) => { const sc = o.scale || 1, raw = getp(c, path); const val = raw == null ? "" : (sc === 1 ? raw : +(raw*sc).toFixed(4));
-    return `<span class="inl"><input type="${o.type||"number"}" ${o.type?"":'step="any"'} data-p="${path}" ${o.scale?`data-sc="${sc}"`:""} value="${esc(val)}">${o.suf?`<span class="suf">${o.suf}</span>`:""}</span>`; };
+    return `<span class="inl"><input type="${o.type||"text"}" ${o.type?"":'inputmode="decimal" data-num="1" autocomplete="off"'} data-p="${path}" ${o.scale?`data-sc="${sc}"`:""} value="${esc(val)}">${o.suf?`<span class="suf">${o.suf}</span>`:""}</span>`; };
   const anden = S.position && !S.position.hjem, auto = anden || !!k.auto_afstand;
   const km1 = x => String(x).replace(".", ",");
   const butRows = Object.entries(c.butikker).map(([id,b]) => {
@@ -755,7 +755,7 @@ function indstillingerView(){
       afst = find + (anden ? "" : `<br><label class="small inl"><input type="checkbox" data-fast="${esc(id)}"> Indtast selv</label>`);
       zone = `${zdot(e.zone || b.zone)} ${esc(e.zone || b.zone)}`;
     } else {
-      afst = `<span class="inl"><input type="number" step="any" style="min-width:70px" data-p="butikker.${esc(id)}.afstand_km" value="${b.afstand_km}"><span class="suf">km</span></span>`
+      afst = `<span class="inl"><input type="text" inputmode="decimal" data-num="1" style="min-width:70px" data-p="butikker.${esc(id)}.afstand_km" value="${b.afstand_km}"><span class="suf">km</span></span>`
         + (auto ? `<br><label class="small inl"><input type="checkbox" data-fast="${esc(id)}" checked> Indtast selv</label>` : "");
       zone = `<input type="text" data-p="butikker.${esc(id)}.zone" data-zone value="${esc(b.zone)}" style="min-width:90px">`;
     }
@@ -809,6 +809,7 @@ function indstillingerView(){
     <label class="f">API-nøgle til Tjek<span class="hint">Kun hvis hentning afvises uden. Tom = ingen nøgle.</span><input type="password" data-p="tjek.api_key" value="${esc(c.tjek.api_key||"")}" autocomplete="off"></label>
     <div class="inl"><button class="btn ghost small" data-do="demo-on" type="button">Indlæs demodata</button><button class="btn ghost small" data-do="demo-off" type="button">Fjern demodata</button></div></div></section>
 
+  <p class="note" id="gem-fejl" role="alert" hidden style="border-color:var(--danger)"></p>
   <div class="savebar"><button class="btn" id="gem">Gem indstillinger</button><button class="btn ghost" id="fortryd">Fortryd ændringer</button></div></div>`;
 }
 
@@ -920,7 +921,7 @@ document.addEventListener("click", e => {
   if(t.id === "gem"){ (async () => { try{
       const r = await api("/api/indstillinger", draft); draft = null; await load();
       if(r.find) visFind(); else toast("Indstillinger gemt.");
-    }catch(e){ toast(e.message, true); } })(); return; }
+    }catch(e){ const fb = $("#gem-fejl"); if(fb){ fb.textContent = "Indstillingerne blev ikke gemt. " + e.message; fb.hidden = false; fb.scrollIntoView({block:"center"}); } toast(e.message, true); } })(); return; }
   if(t.id === "geo"){ const q = draft.adresse; const box = $("#geores"); box.innerHTML = '<span class="small muted">Søger …</span>';
     api("/api/geokod", {q}).then(r => { box.innerHTML = r.resultater.length ? r.resultater.map((x,i)=>`<button type="button" data-geo="${i}">${esc(x.navn)}</button>`).join("") : '<span class="small">Ingen adresser fundet. Prøv med vejnavn, nummer og by.</span>'; box._r = r.resultater; })
       .catch(err => { box.innerHTML = `<span class="small" style="color:var(--danger)">${esc(err.message)}</span>`; }); return; }
@@ -939,7 +940,9 @@ document.addEventListener("keydown", e => {
 document.addEventListener("input", e => {
   const el = e.target;
   if(el.dataset.f){ filt[el.dataset.f] = el.type === "checkbox" ? el.checked : el.value; if(el.type === "text") { const pos = el.selectionStart, k = el.dataset.f; render(); const n = $(`[data-f="${k}"]`); n.focus(); n.setSelectionRange(pos,pos); } else render(); return; }
-  if(el.dataset.p && draft){ let v = el.type === "checkbox" ? el.checked : el.value; if(el.type === "number") v = v === "" ? null : parseFloat(v) / (+el.dataset.sc || 1); setp(draft, el.dataset.p, v); }
+  if(el.dataset.p && draft){ let v = el.type === "checkbox" ? el.checked : el.value;
+    if(el.dataset.num){ const t = String(el.value).trim().replace(",", "."); v = t === "" ? null : (t !== "" && isFinite(+t) ? +t / (+el.dataset.sc || 1) : el.value); }
+    setp(draft, el.dataset.p, v); const fb = $("#gem-fejl"); if(fb) fb.hidden = true; }
 });
 document.addEventListener("change", e => {
   const el = e.target;
